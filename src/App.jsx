@@ -11,6 +11,7 @@ import { FUELS, DENSITY } from "./shared.jsx";
 import Sidebar from "./Sidebar.jsx";
 import ClientsView from "./ClientsView.jsx";
 import SalesView from "./SalesView.jsx";
+import AnalyticsView from "./AnalyticsView.jsx";
 import SellModal from "./SellModal.jsx";
 
 /* ============================================================
@@ -321,7 +322,7 @@ export default function App() {
         <Sidebar view={view} setView={setView} />
         <div className="ps-main">
           <header className="ps-header">
-            <div className="ps-header__brand"><Fuel size={20} /><span>PlutosOil</span><span className="ps-header__sub">{{ clients: "Клиенты", sales: "Реестр сделок" }[view]}</span></div>
+            <div className="ps-header__brand"><Fuel size={20} /><span>PlutosOil</span><span className="ps-header__sub">{{ clients: "Клиенты", sales: "Реестр сделок", analytics: "Аналитика" }[view]}</span></div>
             <div className="ps-header__presence">
               <Users size={14} />
               <div className="ps-avatars">
@@ -341,6 +342,8 @@ export default function App() {
               sales={sales} salesLoaded={salesLoaded} clients={clients} managerName={managerName}
               onOpenSell={(clientId, sale) => setSellModal({ clientId, sale })}
             />
+          ) : view === "analytics" ? (
+            <AnalyticsView sales={sales} clients={clients} rows={rows} />
           ) : (
             <ClientsView
               clients={clients} loaded={clientsLoaded} rows={rows} sales={sales} managerName={managerName}
@@ -524,6 +527,34 @@ function GlobalStyle() {
       .ps-journal__sum { font-family: var(--font-mono); font-weight:600; color: var(--petrol); }
       .ps-journal__manager { text-align:right; font-size:12px; }
       @media (max-width: 900px) { .ps-dash { grid-template-columns: 1fr 1fr; } }
+
+      .ps-kpi-grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; padding:0 22px 16px; }
+      .ps-kpi-card { background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; }
+      .ps-kpi-card__label { font-size:12px; color:#8A94A0; margin-bottom:8px; }
+      .ps-kpi-card__value { font-family: var(--font-display); font-size:22px; font-weight:700; color: var(--petrol); }
+      .ps-analytics-grid { display:grid; grid-template-columns: repeat(2, 1fr); gap:14px; padding:0 22px 22px; }
+      .ps-panel { background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 18px; }
+      .ps-panel--wide { grid-column: 1 / -1; }
+      .ps-panel__title { display:flex; align-items:center; gap:7px; font-family: var(--font-display); font-weight:600; font-size:13px; color: var(--petrol); margin-bottom:14px; }
+      .ps-barlist { display:flex; flex-direction:column; gap:10px; }
+      .ps-barlist__row { display:grid; grid-template-columns: 110px 1fr auto; align-items:center; gap:10px; font-size:12.5px; }
+      .ps-barlist__label { color:#5B6770; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .ps-barlist__track { height:8px; background:#EAEDF0; border-radius:6px; overflow:hidden; }
+      .ps-barlist__fill { height:100%; border-radius:6px; transition: width 0.4s ease; }
+      .ps-barlist__value { font-family: var(--font-mono); font-size:12px; color: var(--ink); white-space:nowrap; text-align:right; }
+      .ps-trend { display:flex; align-items:flex-end; gap:10px; height:160px; padding-top:8px; }
+      .ps-trend__col { flex:1; display:flex; flex-direction:column; align-items:center; height:100%; }
+      .ps-trend__value { font-family: var(--font-mono); font-size:11px; color:#8A94A0; margin-bottom:4px; height:14px; }
+      .ps-trend__bar-wrap { flex:1; width:100%; display:flex; align-items:flex-end; }
+      .ps-trend__bar { width:100%; min-height:2px; background: linear-gradient(180deg, var(--amber), var(--petrol-2)); border-radius:6px 6px 0 0; }
+      .ps-trend__label { font-size:11px; color:#8A94A0; margin-top:8px; }
+      .ps-topclients { display:flex; flex-direction:column; gap:2px; }
+      .ps-topclients__row { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid #EEF1F3; font-size:13px; }
+      .ps-topclients__row:last-child { border-bottom:none; }
+      .ps-topclients__rank { font-family: var(--font-mono); color:#AEB6BD; width:16px; }
+      .ps-topclients__name { flex:1; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .ps-topclients__sum { font-family: var(--font-mono); color: var(--petrol); font-weight:600; }
+      @media (max-width: 900px) { .ps-kpi-grid { grid-template-columns: 1fr 1fr; } .ps-analytics-grid { grid-template-columns: 1fr; } }
     `}</style>
   );
 }

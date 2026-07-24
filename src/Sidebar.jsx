@@ -4,7 +4,7 @@ import { Fuel, Building2, CalendarDays, BarChart3 } from "lucide-react";
 const ITEMS = [
   { key: "clients", label: "Клиенты", icon: Building2 },
   { key: "sales", label: "Реестр сделок", icon: CalendarDays },
-  { key: "analytics", label: "Аналитика", icon: BarChart3, soon: true },
+  { key: "analytics", label: "Аналитика", icon: BarChart3 },
 ];
 
 export default function Sidebar({ view, setView }) {
