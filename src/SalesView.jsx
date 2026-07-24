@@ -97,13 +97,14 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
               </div>
               <div className="ps-journal__entries">
                 {entries.map((s) => (
-                  <div key={s.id} className="ps-journal__entry">
+                  <button key={s.id} type="button" className="ps-journal__entry" onClick={() => onOpenSell(s.clientId, s)}>
                     <span className="ps-journal__client">{s.clientName}</span>
                     <span className="ps-history__fuel">{s.fuel || "—"}</span>
                     <span className="ps-journal__vol">{fmtInt(toNum(s.volume))} л</span>
+                    <span className="ps-journal__payment">{s.paymentMethod || "—"}</span>
                     <span className="ps-journal__sum">{fmtInt(toNum(s.sum))} ₽</span>
                     <span className="ps-journal__manager">{s.createdBy ? <span style={{ color: colorForName(s.createdBy) }}>{s.createdBy}</span> : "—"}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>

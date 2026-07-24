@@ -134,10 +134,13 @@ create table if not exists sales (
   volume numeric,
   sum numeric,
   sale_date date default current_date,
+  payment_method text default '',
   comment text default '',
   created_by text default '',
   created_at timestamptz default now()
 );
+
+alter table sales add column if not exists payment_method text default '';
 
 alter table sales enable row level security;
 

@@ -303,12 +303,12 @@ export default function ClientsView({
                   </div>
                   {(salesByClient.get(draft.id) || []).length === 0 && <div className="ps-history__empty">Пока нет оформленных продаж.</div>}
                   {(salesByClient.get(draft.id) || []).map((s) => (
-                    <div key={s.id} className="ps-history__row">
+                    <button key={s.id} type="button" className="ps-history__row ps-history__row--clickable" onClick={() => onSell(draft.id, s)}>
                       <span className="ps-history__fuel">{s.fuel || "—"}</span>
                       <span>{s.saleDate}</span>
                       <span>{fmtInt(toNum(s.volume))} л</span>
                       <span className="ps-history__sum">{fmtInt(toNum(s.sum))} ₽</span>
-                    </div>
+                    </button>
                   ))}
 
                   <div className="ps-history__row-head" style={{ marginTop: 16 }}>

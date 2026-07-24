@@ -39,13 +39,15 @@ export const toDbClient = (c) => ({
 
 export const fromDbSale = (s) => ({
   id: s.id, clientId: s.client_id, fuel: s.fuel || "", price: s.price ?? "", volume: s.volume ?? "",
-  sum: s.sum ?? "", saleDate: s.sale_date || "", comment: s.comment || "", createdBy: s.created_by || "",
+  sum: s.sum ?? "", saleDate: s.sale_date || "", paymentMethod: s.payment_method || "",
+  comment: s.comment || "", createdBy: s.created_by || "",
   createdAt: s.created_at ? new Date(s.created_at).getTime() : 0,
 });
 
 export const toDbSale = (s) => ({
   client_id: s.clientId, fuel: s.fuel, price: toNum(s.price), volume: toNum(s.volume),
-  sum: toNum(s.sum), sale_date: s.saleDate, comment: s.comment, created_by: s.createdBy,
+  sum: toNum(s.sum), sale_date: s.saleDate, payment_method: s.paymentMethod,
+  comment: s.comment, created_by: s.createdBy,
 });
 
 export function timeAgo(ts) {

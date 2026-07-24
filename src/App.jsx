@@ -334,14 +334,14 @@ export default function App() {
           {view === "sales" ? (
             <SalesView
               sales={sales} salesLoaded={salesLoaded} clients={clients} managerName={managerName}
-              onOpenSell={(clientId) => setSellModal({ clientId })}
+              onOpenSell={(clientId, sale) => setSellModal({ clientId, sale })}
             />
           ) : (
             <ClientsView
               clients={clients} loaded={clientsLoaded} rows={rows} sales={sales} managerName={managerName}
               summary={summary}
               onCreate={createClient} onUpdate={updateClient} onDelete={deleteClient}
-              onSell={(clientId) => setSellModal({ clientId })}
+              onSell={(clientId, sale) => setSellModal({ clientId, sale })}
               onCommitField={commitField} onRemoveRow={removeRow} onActualize={actualize}
               onAddDeal={addDealForClient} onExportExcel={exportExcel}
             />
@@ -350,7 +350,7 @@ export default function App() {
       </div>
       {sellModal && (
         <SellModal
-          clients={clients} managerName={managerName} presetClientId={sellModal.clientId}
+          clients={clients} managerName={managerName} presetClientId={sellModal.clientId} sale={sellModal.sale}
           onClose={() => setSellModal(null)}
         />
       )}
@@ -485,6 +485,8 @@ function GlobalStyle() {
       .ps-history__head { font-family: var(--font-display); font-weight:600; font-size:12.5px; color: var(--petrol); margin-bottom:8px; }
       .ps-history__empty { font-size:12px; color:#8A94A0; }
       .ps-history__row { display:grid; grid-template-columns: 1fr 1fr 1.2fr 1fr; gap:6px; font-size:12px; padding:6px 0; border-bottom:1px solid #EEF1F3; }
+      .ps-history__row--clickable { width:100%; text-align:left; border:none; background:transparent; font-family: var(--font-body); color: var(--ink); cursor:pointer; border-radius:6px; }
+      .ps-history__row--clickable:hover { background:#F0F4F7; }
       .ps-history__fuel { font-weight:600; color: var(--petrol-2); }
       .ps-history__sum { font-family: var(--font-mono); text-align:right; }
 
@@ -501,9 +503,11 @@ function GlobalStyle() {
       .ps-journal__day-title { font-family: var(--font-display); font-weight:700; font-size:14px; text-transform:uppercase; letter-spacing:0.03em; color: var(--ink); }
       .ps-journal__day-stats { font-size:12px; color:#8A94A0; }
       .ps-journal__entries { display:flex; flex-direction:column; gap:1px; background: var(--line); border-radius:10px; overflow:hidden; }
-      .ps-journal__entry { display:grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap:10px; align-items:center; background: var(--panel); padding:10px 14px; font-size:12.5px; }
+      .ps-journal__entry { display:grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr; gap:10px; align-items:center; background: var(--panel); padding:10px 14px; font-size:12.5px; border:none; width:100%; text-align:left; font-family: var(--font-body); color: var(--ink); cursor:pointer; }
+      .ps-journal__entry:hover { background:#F0F4F7; }
       .ps-journal__client { font-weight:600; }
       .ps-journal__vol { font-family: var(--font-mono); color:#5B6770; }
+      .ps-journal__payment { color:#5B6770; }
       .ps-journal__sum { font-family: var(--font-mono); font-weight:600; color: var(--petrol); }
       .ps-journal__manager { text-align:right; font-size:12px; }
       @media (max-width: 900px) { .ps-dash { grid-template-columns: 1fr 1fr; } }
