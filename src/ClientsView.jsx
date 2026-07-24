@@ -6,28 +6,13 @@ import {
 } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { genId, toNum, fmtInt, colorForName } from "./utils.js";
-import { FUELS, STATUSES, Cell, FuelGauge, CONTAINER_LABELS } from "./shared.jsx";
+import { FUELS, STATUSES, Cell, FuelGauge, CONTAINER_LABELS, SuggestDropdown } from "./shared.jsx";
 
 const emptyClient = (managerName) => ({
   id: null, clientNo: null, company: "", contactName: "", phone: "", source: "",
   inn: "", kpp: "", ogrn: "", legalAddress: "", bankDetails: "", comment: "",
   fileUrl: "", fileName: "", assignedTo: managerName || "", createdBy: managerName || "",
 });
-
-function SuggestDropdown({ items, onPick }) {
-  if (items.length === 0) return null;
-  return (
-    <div className="ps-suggest">
-      <div className="ps-suggest__hint">Похоже, уже есть в базе:</div>
-      {items.map((c) => (
-        <button key={c.id} type="button" className="ps-suggest__item" onMouseDown={(e) => { e.preventDefault(); onPick(c); }}>
-          <span className="ps-suggest__company">{c.company || "Без названия"}</span>
-          <span className="ps-suggest__meta">{c.contactName || "—"} · {c.phone || "—"}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
 
 export default function ClientsView({
   clients, loaded, rows, sales, managerName, summary,

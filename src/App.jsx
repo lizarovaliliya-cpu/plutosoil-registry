@@ -203,7 +203,10 @@ export default function App() {
     const maxNo = clients.reduce((m, c) => Math.max(m, toNum(c.clientNo)), 0);
     const payload = { ...toDbClient(draft), client_no: maxNo + 1, created_by: managerName || "Гость" };
     const { data, error } = await supabase.from("clients").insert([payload]).select().single();
-    if (!error && data) setClients((prev) => [fromDbClient(data), ...prev]);
+    if (error || !data) return null;
+    const created = fromDbClient(data);
+    setClients((prev) => [created, ...prev]);
+    return created;
   };
   const updateClient = async (draft) => {
     const { error } = await supabase.from("clients").update(toDbClient(draft)).eq("id", draft.id);
@@ -396,7 +399,7 @@ export default function App() {
       {sellModal && (
         <SellModal
           clients={clients} managerName={managerName} presetClientId={sellModal.clientId} sale={sellModal.sale}
-          prices={prices} onClose={() => setSellModal(null)}
+          prices={prices} onCreateClient={createClient} onClose={() => setSellModal(null)}
         />
       )}
       {pricesModalOpen && (
@@ -521,6 +524,13 @@ function GlobalStyle() {
       .ps-sell-sum { font-family: var(--font-mono); font-size:20px; font-weight:600; color: var(--petrol); padding:8px 0; }
       .ps-sell-sum__breakdown { font-size:11.5px; color:#8A94A0; margin-top:-4px; }
       .ps-field-row { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+      .ps-field-head { display:flex; align-items:center; justify-content:space-between; }
+      .ps-link-btn { display:inline-flex; align-items:center; gap:3px; border:none; background:transparent; color: var(--petrol-2); font-size:12px; font-weight:600; cursor:pointer; padding:0; }
+      .ps-link-btn:hover { color: var(--petrol); text-decoration:underline; }
+      .ps-new-client { display:flex; flex-direction:column; gap:8px; background:#EEF1F4; border-radius:12px; padding:12px; margin-top:5px; }
+      .ps-new-client input { width:100%; border:1px solid var(--line); border-radius:9px; padding:9px 11px; font-size:13.5px; font-family: var(--font-body); color: var(--ink); background: var(--panel); }
+      .ps-new-client input:focus { outline:2px solid var(--petrol-2); outline-offset:1px; }
+      .ps-new-client__actions { display:flex; justify-content:flex-end; gap:8px; }
       .ps-check-field { display:flex; align-items:center; gap:8px; font-size:13.5px; color: var(--ink); cursor:pointer; }
       .ps-check-field input { width:16px; height:16px; cursor:pointer; }
       .ps-price-row { border:1px solid var(--line); border-radius:12px; padding:12px 14px; background: var(--panel); display:flex; flex-direction:column; gap:8px; }

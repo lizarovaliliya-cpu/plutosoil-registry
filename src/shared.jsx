@@ -48,6 +48,21 @@ export function Cell({ value, onCommit, type = "text", options, align, mono, pla
   );
 }
 
+export function SuggestDropdown({ items, onPick }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="ps-suggest">
+      <div className="ps-suggest__hint">Похоже, уже есть в базе:</div>
+      {items.map((c) => (
+        <button key={c.id} type="button" className="ps-suggest__item" onMouseDown={(e) => { e.preventDefault(); onPick(c); }}>
+          <span className="ps-suggest__company">{c.company || "Без названия"}</span>
+          <span className="ps-suggest__meta">{c.contactName || "—"} · {c.phone || "—"}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function FuelGauge({ fuel, stats }) {
   const pct = stats.weekly > 0 ? Math.min(100, (stats.purchased / stats.weekly) * 100) : 0;
   return (

@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { X, ShoppingCart, Trash2 } from "lucide-react";
+import { X, ShoppingCart, Trash2, Plus } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { toNum, fmtInt, toDbSale } from "./utils.js";
-import { FUELS } from "./shared.jsx";
+import { FUELS, SuggestDropdown } from "./shared.jsx";
 
 const PAYMENT_METHODS = ["Наличные", "Безналичный", "Карта"];
 const CONTAINER_MODES = [
@@ -18,9 +18,15 @@ const isoToday = () => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
-export default function SellModal({ clients, managerName, presetClientId, sale, prices, onClose }) {
+export default function SellModal({ clients, managerName, presetClientId, sale, prices, onCreateClient, onClose }) {
   const sortedClients = useMemo(() => [...clients].sort((a, b) => a.company.localeCompare(b.company, "ru")), [clients]);
   const [clientId, setClientId] = useState(sale?.clientId || presetClientId || (sortedClients[0]?.id ?? ""));
+  const [newClientMode, setNewClientMode] = useState(false);
+  const [newCompany, setNewCompany] = useState("");
+  const [newContact, setNewContact] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [suggestField, setSuggestField] = useState(null); // 'company' | 'contact' | 'phone' | null
+  const [creatingClient, setCreatingClient] = useState(false);
   const [fuel, setFuel] = useState(sale?.fuel || FUELS[0]);
   const [price, setPrice] = useState(sale?.price ?? "");
   const [volume, setVolume] = useState(sale?.volume ?? "");
@@ -76,6 +82,37 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
     onClose();
   };
 
+  const suggestionsFor = (query) => {
+    const q = (query || "").trim().toLowerCase();
+    if (q.length < 2) return [];
+    return clients.filter((c) => [c.company, c.contactName, c.phone].some((v) => (v || "").toLowerCase().includes(q))).slice(0, 6);
+  };
+
+  const cancelNewClient = () => {
+    setNewClientMode(false);
+    setNewCompany(""); setNewContact(""); setNewPhone(""); setSuggestField(null);
+  };
+
+  const pickExistingClient = (c) => {
+    setClientId(c.id);
+    cancelNewClient();
+  };
+
+  const createNewClient = async () => {
+    if (!newCompany.trim() || !onCreateClient) return;
+    setCreatingClient(true);
+    const created = await onCreateClient({
+      company: newCompany.trim(), contactName: newContact.trim(), phone: newPhone.trim(),
+      source: "", inn: "", kpp: "", ogrn: "", legalAddress: "", bankDetails: "", comment: "",
+      fileUrl: "", fileName: "", assignedTo: managerName || "",
+    });
+    setCreatingClient(false);
+    if (created) {
+      setClientId(created.id);
+      cancelNewClient();
+    }
+  };
+
   const remove = async () => {
     if (!deleteConfirm) { setDeleteConfirm(true); return; }
     setSaving(true);
@@ -93,13 +130,50 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
           <button className="ps-mini" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="ps-drawer__body">
-          <label className="ps-field">
-            <span>Клиент *</span>
-            <select value={clientId} onChange={(e) => setClientId(e.target.value)} disabled={!!presetClientId && !isEdit}>
-              {sortedClients.length === 0 && <option value="">Нет клиентов — сначала добавьте карточку</option>}
-              {sortedClients.map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
-            </select>
-          </label>
+          <div className="ps-field">
+            <div className="ps-field-head">
+              <span>Клиент *</span>
+              {!newClientMode && !(presetClientId && !isEdit) && (
+                <button type="button" className="ps-link-btn" onClick={() => setNewClientMode(true)}>
+                  <Plus size={12} /> Новый клиент
+                </button>
+              )}
+            </div>
+            {!newClientMode ? (
+              <select value={clientId} onChange={(e) => setClientId(e.target.value)} disabled={!!presetClientId && !isEdit}>
+                {sortedClients.length === 0 && <option value="">Нет клиентов — сначала добавьте карточку</option>}
+                {sortedClients.map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
+              </select>
+            ) : (
+              <div className="ps-new-client">
+                <div style={{ position: "relative" }}>
+                  <input placeholder="Компания *" value={newCompany}
+                    onChange={(e) => setNewCompany(e.target.value)}
+                    onFocus={() => setSuggestField("company")} onBlur={() => setTimeout(() => setSuggestField((f) => (f === "company" ? null : f)), 150)} />
+                  {suggestField === "company" && <SuggestDropdown items={suggestionsFor(newCompany)} onPick={pickExistingClient} />}
+                </div>
+                <div style={{ position: "relative" }}>
+                  <input placeholder="Контактное лицо" value={newContact}
+                    onChange={(e) => setNewContact(e.target.value)}
+                    onFocus={() => setSuggestField("contact")} onBlur={() => setTimeout(() => setSuggestField((f) => (f === "contact" ? null : f)), 150)} />
+                  {suggestField === "contact" && <SuggestDropdown items={suggestionsFor(newContact)} onPick={pickExistingClient} />}
+                </div>
+                <div style={{ position: "relative" }}>
+                  <input placeholder="Телефон" value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                    onFocus={() => setSuggestField("phone")} onBlur={() => setTimeout(() => setSuggestField((f) => (f === "phone" ? null : f)), 150)} />
+                  {suggestField === "phone" && <SuggestDropdown items={suggestionsFor(newPhone)} onPick={pickExistingClient} />}
+                </div>
+                <div className="ps-new-client__actions">
+                  <button type="button" className="ps-btn" onClick={cancelNewClient}>Отмена</button>
+                  <button type="button" className="ps-btn ps-btn--primary" style={{ width: "auto" }}
+                    disabled={!newCompany.trim() || creatingClient} onClick={createNewClient}>
+                    {creatingClient ? "Создание…" : "Создать и выбрать"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           <label className="ps-field">
             <span>Вид топлива</span>
             <select value={fuel} onChange={(e) => setFuel(e.target.value)}>
