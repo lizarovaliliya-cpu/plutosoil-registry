@@ -6,6 +6,9 @@ import {
 import * as XLSX from "xlsx";
 import { supabase } from "./supabaseClient.js";
 import { SEED_DATA } from "./seedData.js";
+import { genId, todayStr, toNum, fmtInt, fmtT, timeAgo, colorForName } from "./utils.js";
+import Sidebar from "./Sidebar.jsx";
+import ClientsView from "./ClientsView.jsx";
 
 /* ============================================================
    PlutosOil — Реестр покупателей топлива
@@ -29,48 +32,13 @@ const STATUSES = [
 ];
 const statusMeta = (v) => STATUSES.find((s) => s.value === (v || "")) || STATUSES[0];
 
-const AVATAR_COLORS = ["#175983", "#1E8A56", "#B9770E", "#7C5CBF", "#C13B3B", "#0E3A53", "#C9750E"];
-const colorForName = (name) => {
-  let h = 0;
-  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
-  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
-};
-
-const genId = () =>
-  window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : "r" + Date.now() + Math.random().toString(16).slice(2);
-
-const todayStr = () => {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}`;
-};
-
-const toNum = (v) => {
-  const n = Number(String(v).replace(/[^\d.-]/g, ""));
-  return isNaN(n) ? 0 : n;
-};
-const fmtInt = (n) => Math.round(n).toLocaleString("ru-RU");
-const fmtT = (n) => (n / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 2 });
-
-function timeAgo(ts) {
-  if (!ts) return "";
-  const s = Math.floor((Date.now() - ts) / 1000);
-  if (s < 5) return "только что";
-  if (s < 60) return `${s} сек назад`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m} мин назад`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h} ч назад`;
-  return `${Math.floor(h / 24)} дн назад`;
-}
-
 /* ---- преобразование camelCase (UI) <-> snake_case (Supabase) ---- */
 const fromDb = (r) => ({
   id: r.id, no: r.no, name: r.name || "", contact: r.contact || "", source: r.source || "",
   phone: r.phone || "", fuel: r.fuel || "", weeklyNeed: r.weekly_need ?? "", updateDate: r.update_date || "",
   status: r.status || "", statedNeed: r.stated_need || "", purchased: r.purchased ?? "",
   purchaseSum: r.purchase_sum ?? "", comment: r.comment || "", updatedBy: r.updated_by || "",
-  updatedAt: r.updated_at ? new Date(r.updated_at).getTime() : 0,
+  updatedAt: r.updated_at ? new Date(r.updated_at).getTime() : 0, clientId: r.client_id || null,
 });
 const toDb = (r) => ({
   id: r.id, no: toNum(r.no), name: r.name, contact: r.contact, source: r.source, phone: r.phone,
@@ -143,6 +111,7 @@ export default function App() {
   const [sortKey, setSortKey] = useState("no");
   const [sortDir, setSortDir] = useState("asc");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [view, setView] = useState("registry");
   const [, forceTick] = useState(0);
   const presenceChannelRef = useRef(null);
 
@@ -368,99 +337,110 @@ export default function App() {
   return (
     <div className="ps-app">
       <GlobalStyle />
-      <header className="ps-header">
-        <div className="ps-header__brand"><Fuel size={20} /><span>PlutosOil</span><span className="ps-header__sub">Реестр покупателей</span></div>
-        <div className="ps-header__presence">
-          <Users size={14} />
-          <div className="ps-avatars">
-            {presenceList.length === 0 && <span className="ps-header__you">{managerName}</span>}
-            {presenceList.map((name) => <span key={name} className="ps-avatar" style={{ background: colorForName(name) }} title={name}>{name.trim().slice(0, 1).toUpperCase()}</span>)}
-          </div>
-        </div>
-        <div className="ps-header__sync">
-          {connError ? <><WifiOff size={13} /> нет связи с базой</> : <><RefreshCw size={13} className={syncing ? "ps-spin" : ""} />{syncing ? "сохранение…" : lastSync ? `синхронизировано ${timeAgo(lastSync)}` : "…"}</>}
-        </div>
-        <button className="ps-btn ps-header__logout" onClick={() => supabase.auth.signOut()}><LogOut size={14} /> Выйти</button>
-      </header>
+      <div className="ps-shell">
+        <Sidebar view={view} setView={setView} />
+        <div className="ps-main">
+          <header className="ps-header">
+            <div className="ps-header__brand"><Fuel size={20} /><span>PlutosOil</span><span className="ps-header__sub">{view === "registry" ? "Реестр покупателей" : "Клиенты"}</span></div>
+            <div className="ps-header__presence">
+              <Users size={14} />
+              <div className="ps-avatars">
+                {presenceList.length === 0 && <span className="ps-header__you">{managerName}</span>}
+                {presenceList.map((name) => <span key={name} className="ps-avatar" style={{ background: colorForName(name) }} title={name}>{name.trim().slice(0, 1).toUpperCase()}</span>)}
+              </div>
+            </div>
+            <div className="ps-header__sync">
+              {connError ? <><WifiOff size={13} /> нет связи с базой</> : <><RefreshCw size={13} className={syncing ? "ps-spin" : ""} />{syncing ? "сохранение…" : lastSync ? `синхронизировано ${timeAgo(lastSync)}` : "…"}</>}
+            </div>
+            <button className="ps-btn ps-header__logout" onClick={() => supabase.auth.signOut()}><LogOut size={14} /> Выйти</button>
+          </header>
 
-      <div className="ps-dash">
-        {FUELS.map((f) => <FuelGauge key={f} fuel={f} stats={summary.byFuel[f]} />)}
-        <div className="ps-dash__total">
-          <div className="ps-dash__total-row"><Gauge size={14} /><span>Итого по реестру</span></div>
-          <div className="ps-dash__total-num">{summary.totalClients}</div>
-          <div className="ps-dash__total-label">клиентов · {summary.totalRows} заявок</div>
-          <div className="ps-dash__total-sum">{fmtInt(summary.totalSum)} ₽</div>
-          <div className="ps-dash__total-label">выручка от закупок на сейчас</div>
+          {view === "clients" ? (
+            <ClientsView rows={rows} managerName={managerName} />
+          ) : (
+            <>
+              <div className="ps-dash">
+                {FUELS.map((f) => <FuelGauge key={f} fuel={f} stats={summary.byFuel[f]} />)}
+                <div className="ps-dash__total">
+                  <div className="ps-dash__total-row"><Gauge size={14} /><span>Итого по реестру</span></div>
+                  <div className="ps-dash__total-num">{summary.totalClients}</div>
+                  <div className="ps-dash__total-label">клиентов · {summary.totalRows} заявок</div>
+                  <div className="ps-dash__total-sum">{fmtInt(summary.totalSum)} ₽</div>
+                  <div className="ps-dash__total-label">выручка от закупок на сейчас</div>
+                </div>
+              </div>
+
+              <div className="ps-toolbar">
+                <div className="ps-search">
+                  <Search size={15} />
+                  <input placeholder="Поиск: компания, контакт, телефон, комментарий…" value={search} onChange={(e) => setSearch(e.target.value)} />
+                  {search && <X size={14} className="ps-search__clear" onClick={() => setSearch("")} />}
+                </div>
+                <div className="ps-chips">
+                  <button className={`ps-chip ${fuelFilter === null ? "ps-chip--on" : ""}`} onClick={() => setFuelFilter(null)}>Все виды</button>
+                  {FUELS.map((f) => <button key={f} className={`ps-chip ${fuelFilter === f ? "ps-chip--on" : ""}`} onClick={() => setFuelFilter(fuelFilter === f ? null : f)}>{f}</button>)}
+                </div>
+                <div className="ps-chips">
+                  <button className={`ps-chip ${statusFilter === null ? "ps-chip--on" : ""}`} onClick={() => setStatusFilter(null)}>Все статусы</button>
+                  {STATUSES.filter((s) => s.value).map((s) => (
+                    <button key={s.value} className={`ps-chip ${statusFilter === s.value ? "ps-chip--on" : ""}`}
+                      style={statusFilter === s.value ? { background: s.bg, color: s.color, borderColor: s.color } : {}}
+                      onClick={() => setStatusFilter(statusFilter === s.value ? null : s.value)}>{s.label}</button>
+                  ))}
+                </div>
+                <div className="ps-toolbar__spacer" />
+                <button className="ps-btn" onClick={exportExcel}><Download size={15} /> Excel</button>
+                <button className="ps-btn ps-btn--primary" onClick={addRow}><Plus size={15} /> Покупатель</button>
+              </div>
+
+              <div className="ps-tablewrap">
+                <table className="ps-table">
+                  <thead>
+                    <tr>
+                      <th onClick={() => toggleSort("no")}>№ <SortIcon colKey="no" /></th>
+                      <th onClick={() => toggleSort("name")} className="ps-th-wide">Наименование <SortIcon colKey="name" /></th>
+                      <th>Контакт</th><th>Источник</th><th>Телефон</th><th>Топливо</th>
+                      <th onClick={() => toggleSort("weeklyNeed")}>Потр., л/нед <SortIcon colKey="weeklyNeed" /></th>
+                      <th className="ps-th-wide">Заявлено (исх.)</th>
+                      <th onClick={() => toggleSort("updateDate")}>Актуализация <SortIcon colKey="updateDate" /></th>
+                      <th onClick={() => toggleSort("status")}>Статус <SortIcon colKey="status" /></th>
+                      <th onClick={() => toggleSort("purchased")}>Куплено, л <SortIcon colKey="purchased" /></th>
+                      <th onClick={() => toggleSort("purchaseSum")}>Сумма, ₽ <SortIcon colKey="purchaseSum" /></th>
+                      <th className="ps-th-wide">Комментарий</th><th>Изменил</th><th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((r) => (
+                      <tr key={r.id}>
+                        <td className="ps-td-no">{r.no}</td>
+                        <td><Cell value={r.name} onCommit={(v) => commitField(r.id, "name", v)} placeholder="Компания" /></td>
+                        <td><Cell value={r.contact} onCommit={(v) => commitField(r.id, "contact", v)} placeholder="Контакт" /></td>
+                        <td><Cell value={r.source} onCommit={(v) => commitField(r.id, "source", v)} placeholder="Источник" /></td>
+                        <td><Cell value={r.phone} onCommit={(v) => commitField(r.id, "phone", v)} mono placeholder="+7…" /></td>
+                        <td><Cell type="fuel" value={r.fuel} onCommit={(v) => commitField(r.id, "fuel", v)} /></td>
+                        <td><Cell type="number" align="right" mono value={r.weeklyNeed} onCommit={(v) => commitField(r.id, "weeklyNeed", v)} /></td>
+                        <td><Cell value={r.statedNeed} onCommit={(v) => commitField(r.id, "statedNeed", v)} placeholder="со слов клиента" /></td>
+                        <td className="ps-td-date">
+                          <Cell value={r.updateDate} onCommit={(v) => commitField(r.id, "updateDate", v)} mono placeholder="дд.мм.гггг" />
+                          <button className="ps-mini" title="Проставить сегодняшнюю дату" onClick={() => actualize(r.id)}><Clock size={12} /></button>
+                        </td>
+                        <td><Cell type="select" options={STATUSES} value={r.status} onCommit={(v) => commitField(r.id, "status", v)} /></td>
+                        <td><Cell type="number" align="right" mono value={r.purchased} onCommit={(v) => commitField(r.id, "purchased", v)} /></td>
+                        <td><Cell type="number" align="right" mono value={r.purchaseSum} onCommit={(v) => commitField(r.id, "purchaseSum", v)} /></td>
+                        <td><Cell value={r.comment} onCommit={(v) => commitField(r.id, "comment", v)} placeholder="—" /></td>
+                        <td className="ps-td-meta">{r.updatedBy ? (<><span style={{ color: colorForName(r.updatedBy) }}>{r.updatedBy}</span><br /><span className="ps-td-meta__time">{timeAgo(r.updatedAt)}</span></>) : "—"}</td>
+                        <td><button className={`ps-del ${deleteConfirm === r.id ? "ps-del--confirm" : ""}`} onClick={() => removeRow(r.id)}>{deleteConfirm === r.id ? "Точно?" : <Trash2 size={14} />}</button></td>
+                      </tr>
+                    ))}
+                    {filtered.length === 0 && <tr><td colSpan={15} className="ps-empty">{loaded ? "Ничего не найдено — попробуйте изменить поиск или фильтры." : "Загрузка…"}</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+              <div className="ps-footnote">Плотность для перевода в тонны (ориентировочно): АИ-92 — 0,745 кг/л, АИ-95 — 0,750 кг/л, ДТ К5 — 0,840 кг/л (из исходного реестра).</div>
+            </>
+          )}
         </div>
       </div>
-
-      <div className="ps-toolbar">
-        <div className="ps-search">
-          <Search size={15} />
-          <input placeholder="Поиск: компания, контакт, телефон, комментарий…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          {search && <X size={14} className="ps-search__clear" onClick={() => setSearch("")} />}
-        </div>
-        <div className="ps-chips">
-          <button className={`ps-chip ${fuelFilter === null ? "ps-chip--on" : ""}`} onClick={() => setFuelFilter(null)}>Все виды</button>
-          {FUELS.map((f) => <button key={f} className={`ps-chip ${fuelFilter === f ? "ps-chip--on" : ""}`} onClick={() => setFuelFilter(fuelFilter === f ? null : f)}>{f}</button>)}
-        </div>
-        <div className="ps-chips">
-          <button className={`ps-chip ${statusFilter === null ? "ps-chip--on" : ""}`} onClick={() => setStatusFilter(null)}>Все статусы</button>
-          {STATUSES.filter((s) => s.value).map((s) => (
-            <button key={s.value} className={`ps-chip ${statusFilter === s.value ? "ps-chip--on" : ""}`}
-              style={statusFilter === s.value ? { background: s.bg, color: s.color, borderColor: s.color } : {}}
-              onClick={() => setStatusFilter(statusFilter === s.value ? null : s.value)}>{s.label}</button>
-          ))}
-        </div>
-        <div className="ps-toolbar__spacer" />
-        <button className="ps-btn" onClick={exportExcel}><Download size={15} /> Excel</button>
-        <button className="ps-btn ps-btn--primary" onClick={addRow}><Plus size={15} /> Покупатель</button>
-      </div>
-
-      <div className="ps-tablewrap">
-        <table className="ps-table">
-          <thead>
-            <tr>
-              <th onClick={() => toggleSort("no")}>№ <SortIcon colKey="no" /></th>
-              <th onClick={() => toggleSort("name")} className="ps-th-wide">Наименование <SortIcon colKey="name" /></th>
-              <th>Контакт</th><th>Источник</th><th>Телефон</th><th>Топливо</th>
-              <th onClick={() => toggleSort("weeklyNeed")}>Потр., л/нед <SortIcon colKey="weeklyNeed" /></th>
-              <th className="ps-th-wide">Заявлено (исх.)</th>
-              <th onClick={() => toggleSort("updateDate")}>Актуализация <SortIcon colKey="updateDate" /></th>
-              <th onClick={() => toggleSort("status")}>Статус <SortIcon colKey="status" /></th>
-              <th onClick={() => toggleSort("purchased")}>Куплено, л <SortIcon colKey="purchased" /></th>
-              <th onClick={() => toggleSort("purchaseSum")}>Сумма, ₽ <SortIcon colKey="purchaseSum" /></th>
-              <th className="ps-th-wide">Комментарий</th><th>Изменил</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((r) => (
-              <tr key={r.id}>
-                <td className="ps-td-no">{r.no}</td>
-                <td><Cell value={r.name} onCommit={(v) => commitField(r.id, "name", v)} placeholder="Компания" /></td>
-                <td><Cell value={r.contact} onCommit={(v) => commitField(r.id, "contact", v)} placeholder="Контакт" /></td>
-                <td><Cell value={r.source} onCommit={(v) => commitField(r.id, "source", v)} placeholder="Источник" /></td>
-                <td><Cell value={r.phone} onCommit={(v) => commitField(r.id, "phone", v)} mono placeholder="+7…" /></td>
-                <td><Cell type="fuel" value={r.fuel} onCommit={(v) => commitField(r.id, "fuel", v)} /></td>
-                <td><Cell type="number" align="right" mono value={r.weeklyNeed} onCommit={(v) => commitField(r.id, "weeklyNeed", v)} /></td>
-                <td><Cell value={r.statedNeed} onCommit={(v) => commitField(r.id, "statedNeed", v)} placeholder="со слов клиента" /></td>
-                <td className="ps-td-date">
-                  <Cell value={r.updateDate} onCommit={(v) => commitField(r.id, "updateDate", v)} mono placeholder="дд.мм.гггг" />
-                  <button className="ps-mini" title="Проставить сегодняшнюю дату" onClick={() => actualize(r.id)}><Clock size={12} /></button>
-                </td>
-                <td><Cell type="select" options={STATUSES} value={r.status} onCommit={(v) => commitField(r.id, "status", v)} /></td>
-                <td><Cell type="number" align="right" mono value={r.purchased} onCommit={(v) => commitField(r.id, "purchased", v)} /></td>
-                <td><Cell type="number" align="right" mono value={r.purchaseSum} onCommit={(v) => commitField(r.id, "purchaseSum", v)} /></td>
-                <td><Cell value={r.comment} onCommit={(v) => commitField(r.id, "comment", v)} placeholder="—" /></td>
-                <td className="ps-td-meta">{r.updatedBy ? (<><span style={{ color: colorForName(r.updatedBy) }}>{r.updatedBy}</span><br /><span className="ps-td-meta__time">{timeAgo(r.updatedAt)}</span></>) : "—"}</td>
-                <td><button className={`ps-del ${deleteConfirm === r.id ? "ps-del--confirm" : ""}`} onClick={() => removeRow(r.id)}>{deleteConfirm === r.id ? "Точно?" : <Trash2 size={14} />}</button></td>
-              </tr>
-            ))}
-            {filtered.length === 0 && <tr><td colSpan={15} className="ps-empty">{loaded ? "Ничего не найдено — попробуйте изменить поиск или фильтры." : "Загрузка…"}</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      <div className="ps-footnote">Плотность для перевода в тонны (ориентировочно): АИ-92 — 0,745 кг/л, АИ-95 — 0,750 кг/л, ДТ К5 — 0,840 кг/л (из исходного реестра).</div>
     </div>
   );
 }
@@ -470,8 +450,18 @@ function GlobalStyle() {
     <style>{`
       @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
       html,body,#root{height:100%;font-family:'Inter',sans-serif;}
-      .ps-app { --ink:#10151C; --paper:#F2F5F7; --panel:#FFFFFF; --line:#DEE4E9; --petrol:#0E3A53; --petrol-2:#175983; --amber:#E8871E; --green:#1E8A56; --red:#C13B3B; --violet:#7C5CBF; --font-display:'Space Grotesk',sans-serif; --font-body:'Inter',sans-serif; --font-mono:'IBM Plex Mono',monospace; font-family: var(--font-body); color: var(--ink); background: var(--paper); min-height:100vh; display:flex; flex-direction:column; }
+      .ps-app { --ink:#10151C; --paper:#F2F5F7; --panel:#FFFFFF; --line:#DEE4E9; --petrol:#0E3A53; --petrol-2:#175983; --amber:#E8871E; --green:#1E8A56; --red:#C13B3B; --violet:#7C5CBF; --font-display:'Space Grotesk',sans-serif; --font-body:'Inter',sans-serif; --font-mono:'IBM Plex Mono',monospace; font-family: var(--font-body); color: var(--ink); background: var(--paper); min-height:100vh; }
       .ps-app * { box-sizing: border-box; }
+      .ps-shell { display:flex; min-height:100vh; }
+      .ps-main { flex:1; min-width:0; display:flex; flex-direction:column; }
+      .ps-sidebar { width:208px; flex-shrink:0; background: var(--ink); color:#fff; display:flex; flex-direction:column; padding:18px 12px; gap:2px; }
+      .ps-sidebar__brand { font-family: var(--font-display); font-weight:700; font-size:15px; display:flex; align-items:center; gap:8px; padding:0 8px 18px; opacity:0.95; }
+      .ps-sidebar__item { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:9px; color:rgba(255,255,255,0.65); font-size:13px; font-weight:500; cursor:pointer; border:none; background:transparent; text-align:left; width:100%; }
+      .ps-sidebar__item:hover { background:rgba(255,255,255,0.06); color:#fff; }
+      .ps-sidebar__item--on { background: var(--petrol-2); color:#fff; }
+      .ps-sidebar__item--soon { cursor:default; opacity:0.4; }
+      .ps-sidebar__item--soon:hover { background:transparent; color:rgba(255,255,255,0.65); }
+      .ps-sidebar__badge { margin-left:auto; font-size:9.5px; text-transform:uppercase; letter-spacing:0.04em; background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:10px; }
       .ps-gate { min-height: 480px; display:flex; align-items:center; justify-content:center; padding: 32px; }
       .ps-gate__card { background: var(--panel); border:1px solid var(--line); border-radius: 16px; padding: 36px; max-width: 380px; box-shadow: 0 1px 2px rgba(16,21,28,0.04); }
       .ps-gate__brand { font-family: var(--font-display); font-weight:700; color: var(--petrol); display:flex; align-items:center; gap:8px; }
@@ -547,6 +537,37 @@ function GlobalStyle() {
       .ps-del:hover { color: var(--red); background:#FBE4E4; }
       .ps-del--confirm { color:#fff; background: var(--red); font-size:10.5px; padding:5px 8px; white-space:nowrap; }
       .ps-footnote { padding:8px 22px 16px; font-size:11px; color:#8A94A0; }
+
+      .ps-client-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:12px; padding:0 22px 22px; overflow:auto; flex:1; align-content:start; }
+      .ps-client-card { text-align:left; background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; cursor:pointer; display:flex; flex-direction:column; gap:6px; font-family: var(--font-body); }
+      .ps-client-card:hover { border-color: var(--petrol-2); box-shadow: 0 1px 4px rgba(16,21,28,0.06); }
+      .ps-client-card__top { display:flex; align-items:center; gap:8px; margin-bottom:2px; }
+      .ps-client-card__icon { color: var(--petrol-2); flex-shrink:0; }
+      .ps-client-card__title { font-family: var(--font-display); font-weight:600; font-size:14px; color: var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .ps-client-card__row { display:flex; align-items:center; gap:6px; font-size:12px; color:#5B6770; }
+      .ps-client-card__bottom { display:flex; align-items:center; justify-content:space-between; margin-top:8px; }
+      .ps-client-card__stat { font-size:11px; color:#8A94A0; }
+
+      .ps-drawer__overlay { position:fixed; inset:0; background:rgba(16,21,28,0.35); display:flex; justify-content:flex-end; z-index:50; }
+      .ps-drawer__panel { width:min(460px, 100%); background: var(--paper); height:100%; display:flex; flex-direction:column; box-shadow:-4px 0 20px rgba(16,21,28,0.15); }
+      .ps-drawer__head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--line); background: var(--panel); }
+      .ps-drawer__head h2 { font-family: var(--font-display); font-size:17px; margin:0; }
+      .ps-drawer__body { flex:1; overflow:auto; padding:18px 22px; display:flex; flex-direction:column; gap:12px; }
+      .ps-drawer__foot { display:flex; align-items:center; gap:8px; padding:14px 22px; border-top:1px solid var(--line); background: var(--panel); }
+      .ps-field { display:flex; flex-direction:column; gap:5px; font-size:12.5px; color:#5B6770; }
+      .ps-field input, .ps-field textarea { border:1px solid var(--line); border-radius:9px; padding:9px 11px; font-size:13.5px; font-family: var(--font-body); color: var(--ink); resize: vertical; }
+      .ps-field input:focus, .ps-field textarea:focus { outline:2px solid var(--petrol-2); outline-offset:1px; }
+      .ps-req-toggle { display:flex; align-items:center; gap:6px; border:none; background:transparent; color: var(--petrol-2); font-size:12.5px; font-weight:600; cursor:pointer; padding:4px 0; align-self:flex-start; }
+      .ps-fieldset { display:flex; flex-direction:column; gap:12px; background:#EEF1F4; border-radius:12px; padding:14px; }
+      .ps-file-btn { display:inline-flex; width:auto; cursor:pointer; }
+      .ps-file-chip { display:flex; align-items:center; gap:6px; background:#EEF1F4; border-radius:9px; padding:7px 10px; font-size:12.5px; }
+      .ps-file-chip__name { color: var(--petrol-2); cursor:pointer; text-decoration:underline; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .ps-history { border-top:1px solid var(--line); padding-top:12px; }
+      .ps-history__head { font-family: var(--font-display); font-weight:600; font-size:12.5px; color: var(--petrol); margin-bottom:8px; }
+      .ps-history__empty { font-size:12px; color:#8A94A0; }
+      .ps-history__row { display:grid; grid-template-columns: 1fr 1fr 1.2fr 1fr; gap:6px; font-size:12px; padding:6px 0; border-bottom:1px solid #EEF1F3; }
+      .ps-history__fuel { font-weight:600; color: var(--petrol-2); }
+      .ps-history__sum { font-family: var(--font-mono); text-align:right; }
       @media (max-width: 900px) { .ps-dash { grid-template-columns: 1fr 1fr; } }
     `}</style>
   );
