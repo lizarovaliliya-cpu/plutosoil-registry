@@ -471,6 +471,12 @@ function GlobalStyle() {
       .ps-sales-total { font-size:12.5px; color:#5B6770; white-space:nowrap; }
       .ps-history__row-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
       .ps-req-toggle { display:flex; align-items:center; gap:6px; border:none; background:transparent; color: var(--petrol-2); font-size:12.5px; font-weight:600; cursor:pointer; padding:4px 0; align-self:flex-start; }
+      .ps-suggest { position:absolute; top:100%; left:0; right:0; margin-top:4px; background: var(--panel); border:1px solid var(--line); border-radius:10px; box-shadow:0 4px 16px rgba(16,21,28,0.12); z-index:20; overflow:hidden; }
+      .ps-suggest__hint { font-size:10.5px; text-transform:uppercase; letter-spacing:0.03em; color:#8A94A0; padding:8px 12px 4px; }
+      .ps-suggest__item { display:flex; flex-direction:column; gap:1px; width:100%; text-align:left; padding:8px 12px; border:none; background:transparent; cursor:pointer; }
+      .ps-suggest__item:hover { background:#EEF1F4; }
+      .ps-suggest__company { font-size:13px; font-weight:600; color: var(--ink); }
+      .ps-suggest__meta { font-size:11.5px; color:#8A94A0; }
       .ps-fieldset { display:flex; flex-direction:column; gap:12px; background:#EEF1F4; border-radius:12px; padding:14px; }
       .ps-file-btn { display:inline-flex; width:auto; cursor:pointer; }
       .ps-file-chip { display:flex; align-items:center; gap:6px; background:#EEF1F4; border-radius:9px; padding:7px 10px; font-size:12.5px; }

@@ -14,6 +14,21 @@ const emptyClient = (managerName) => ({
   fileUrl: "", fileName: "", assignedTo: managerName || "", createdBy: managerName || "",
 });
 
+function SuggestDropdown({ items, onPick }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="ps-suggest">
+      <div className="ps-suggest__hint">Похоже, уже есть в базе:</div>
+      {items.map((c) => (
+        <button key={c.id} type="button" className="ps-suggest__item" onMouseDown={(e) => { e.preventDefault(); onPick(c); }}>
+          <span className="ps-suggest__company">{c.company || "Без названия"}</span>
+          <span className="ps-suggest__meta">{c.contactName || "—"} · {c.phone || "—"}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function ClientsView({
   clients, loaded, rows, sales, managerName, summary,
   onCreate, onUpdate, onDelete, onSell,
@@ -29,6 +44,15 @@ export default function ClientsView({
   const [reqOpen, setReqOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [rowDeleteConfirm, setRowDeleteConfirm] = useState(null);
+  const [suggestField, setSuggestField] = useState(null); // 'company' | 'contactName' | 'phone' | null
+
+  const suggestionsFor = (query) => {
+    const q = (query || "").trim().toLowerCase();
+    if (q.length < 2) return [];
+    return clients
+      .filter((c) => c.id !== draft?.id && [c.company, c.contactName, c.phone].some((v) => (v || "").toLowerCase().includes(q)))
+      .slice(0, 6);
+  };
 
   const historyByClient = useMemo(() => {
     const map = new Map();
@@ -86,8 +110,8 @@ export default function ClientsView({
     ? <ArrowUpDown size={12} className="ps-sorticon ps-sorticon--idle" />
     : (sortDir === "asc" ? <ArrowUp size={12} className="ps-sorticon" /> : <ArrowDown size={12} className="ps-sorticon" />);
 
-  const openCreate = () => { setDraft(emptyClient(managerName)); setReqOpen(false); setDeleteConfirm(false); };
-  const openEdit = (client) => { setDraft({ ...client }); setReqOpen(false); setDeleteConfirm(false); };
+  const openCreate = () => { setDraft(emptyClient(managerName)); setReqOpen(false); setDeleteConfirm(false); setSuggestField(null); };
+  const openEdit = (client) => { setDraft({ ...client }); setReqOpen(false); setDeleteConfirm(false); setSuggestField(null); };
   const closeDrawer = () => setDraft(null);
 
   const saveDraft = async () => {
@@ -202,17 +226,32 @@ export default function ClientsView({
             </div>
 
             <div className="ps-drawer__body">
-              <label className="ps-field">
+              <label className="ps-field" style={{ position: "relative" }}>
                 <span>Компания *</span>
-                <input value={draft.company} onChange={(e) => setDraft({ ...draft, company: e.target.value })} placeholder="Название компании" autoFocus />
+                <input value={draft.company}
+                  onChange={(e) => setDraft({ ...draft, company: e.target.value })}
+                  onFocus={() => setSuggestField("company")}
+                  onBlur={() => setTimeout(() => setSuggestField((f) => (f === "company" ? null : f)), 150)}
+                  placeholder="Название компании" autoFocus />
+                {suggestField === "company" && <SuggestDropdown items={suggestionsFor(draft.company)} onPick={openEdit} />}
               </label>
-              <label className="ps-field">
+              <label className="ps-field" style={{ position: "relative" }}>
                 <span>Контактное лицо</span>
-                <input value={draft.contactName} onChange={(e) => setDraft({ ...draft, contactName: e.target.value })} placeholder="Имя" />
+                <input value={draft.contactName}
+                  onChange={(e) => setDraft({ ...draft, contactName: e.target.value })}
+                  onFocus={() => setSuggestField("contactName")}
+                  onBlur={() => setTimeout(() => setSuggestField((f) => (f === "contactName" ? null : f)), 150)}
+                  placeholder="Имя" />
+                {suggestField === "contactName" && <SuggestDropdown items={suggestionsFor(draft.contactName)} onPick={openEdit} />}
               </label>
-              <label className="ps-field">
+              <label className="ps-field" style={{ position: "relative" }}>
                 <span>Телефон</span>
-                <input value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} placeholder="+7…" />
+                <input value={draft.phone}
+                  onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
+                  onFocus={() => setSuggestField("phone")}
+                  onBlur={() => setTimeout(() => setSuggestField((f) => (f === "phone" ? null : f)), 150)}
+                  placeholder="+7…" />
+                {suggestField === "phone" && <SuggestDropdown items={suggestionsFor(draft.phone)} onPick={openEdit} />}
               </label>
               <label className="ps-field">
                 <span>Источник</span>
