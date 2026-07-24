@@ -43,7 +43,8 @@ export const fromDbSale = (s) => ({
   comment: s.comment || "", createdBy: s.created_by || "",
   createdAt: s.created_at ? new Date(s.created_at).getTime() : 0,
   containerMode: s.container_mode || "", containerPrice: s.container_price ?? "",
-  containerDeposit: s.container_deposit ?? "",
+  containerDeposit: s.container_deposit ?? "", containerQty: s.container_qty ?? "",
+  shipped: !!s.shipped, shippedDate: s.shipped_date || "",
 });
 
 export const toDbSale = (s) => ({
@@ -53,6 +54,8 @@ export const toDbSale = (s) => ({
   container_mode: s.containerMode || "",
   container_price: s.containerPrice === "" ? null : toNum(s.containerPrice),
   container_deposit: s.containerDeposit === "" ? null : toNum(s.containerDeposit),
+  container_qty: s.containerQty === "" ? null : toNum(s.containerQty),
+  shipped: !!s.shipped, shipped_date: s.shipped ? (s.shippedDate || null) : null,
 });
 
 export const fromDbPrice = (p) => ({

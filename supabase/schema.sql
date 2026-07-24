@@ -167,6 +167,15 @@ alter publication supabase_realtime add table sales;
 alter table sales add column if not exists container_mode text default '';
 alter table sales add column if not exists container_price numeric;
 alter table sales add column if not exists container_deposit numeric;
+alter table sales add column if not exists container_qty numeric;
+
+-- ============================================================
+-- Отгрузка (этап 5): оплаченная сделка может быть ещё не
+-- отгружена клиенту. Отгрузка целиком по сделке — без частичных
+-- объёмов — с датой, когда фактически отгрузили.
+-- ============================================================
+alter table sales add column if not exists shipped boolean default false;
+alter table sales add column if not exists shipped_date date;
 
 -- ============================================================
 -- Текущие цены на топливо (этап 4): отдельная цена для наличной

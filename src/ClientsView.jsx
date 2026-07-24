@@ -311,6 +311,11 @@ export default function ClientsView({
                       <span>{s.saleDate}</span>
                       <span>{fmtInt(toNum(s.volume))} л</span>
                       <span className="ps-history__sum">{fmtInt(toNum(s.sum))} ₽</span>
+                      <span>
+                        {s.shipped
+                          ? <span className="ps-ship-badge ps-ship-badge--done">Отгружено</span>
+                          : <span className="ps-ship-badge ps-ship-badge--pending">Не отгружено</span>}
+                      </span>
                     </button>
                   ))}
 

@@ -520,6 +520,9 @@ function GlobalStyle() {
       .ps-field input:focus, .ps-field textarea:focus, .ps-field select:focus { outline:2px solid var(--petrol-2); outline-offset:1px; }
       .ps-sell-sum { font-family: var(--font-mono); font-size:20px; font-weight:600; color: var(--petrol); padding:8px 0; }
       .ps-sell-sum__breakdown { font-size:11.5px; color:#8A94A0; margin-top:-4px; }
+      .ps-field-row { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+      .ps-check-field { display:flex; align-items:center; gap:8px; font-size:13.5px; color: var(--ink); cursor:pointer; }
+      .ps-check-field input { width:16px; height:16px; cursor:pointer; }
       .ps-price-row { border:1px solid var(--line); border-radius:12px; padding:12px 14px; background: var(--panel); display:flex; flex-direction:column; gap:8px; }
       .ps-price-row__fuel { font-family: var(--font-display); font-weight:600; font-size:13.5px; color: var(--petrol); }
       .ps-price-row__grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
@@ -529,6 +532,10 @@ function GlobalStyle() {
       .ps-period-summary__stat { font-size:13.5px; opacity:0.9; }
       .ps-period-summary__stat b { font-family: var(--font-mono); font-size:18px; font-weight:700; margin-right:4px; }
       .ps-period-summary__stat--sum b { color: var(--amber); }
+      .ps-period-summary__stat--warn b { color:#E8871E; }
+      .ps-ship-badge { font-size:10.5px; font-weight:600; padding:3px 8px; border-radius:20px; white-space:nowrap; }
+      .ps-ship-badge--done { background:#E1F4EA; color:#1E8A56; }
+      .ps-ship-badge--pending { background:#FCEBD3; color:#C9750E; }
       .ps-period-summary__divider { width:1px; height:20px; background:rgba(255,255,255,0.2); }
       .ps-history__row-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
       .ps-req-toggle { display:flex; align-items:center; gap:6px; border:none; background:transparent; color: var(--petrol-2); font-size:12.5px; font-weight:600; cursor:pointer; padding:4px 0; align-self:flex-start; }
@@ -545,7 +552,7 @@ function GlobalStyle() {
       .ps-history { border-top:1px solid var(--line); padding-top:12px; }
       .ps-history__head { font-family: var(--font-display); font-weight:600; font-size:12.5px; color: var(--petrol); margin-bottom:8px; }
       .ps-history__empty { font-size:12px; color:#8A94A0; }
-      .ps-history__row { display:grid; grid-template-columns: 1fr 1fr 1.2fr 1fr; gap:6px; font-size:12px; padding:6px 0; border-bottom:1px solid #EEF1F3; }
+      .ps-history__row { display:grid; grid-template-columns: 1fr 1fr 1fr 1.2fr 1fr; gap:6px; font-size:12px; padding:6px 0; border-bottom:1px solid #EEF1F3; align-items:center; }
       .ps-history__row--clickable { width:100%; text-align:left; border:none; background:transparent; font-family: var(--font-body); color: var(--ink); cursor:pointer; border-radius:6px; }
       .ps-history__row--clickable:hover { background:#F0F4F7; }
       .ps-history__fuel { font-weight:600; color: var(--petrol-2); }
@@ -565,7 +572,7 @@ function GlobalStyle() {
       .ps-journal__day-title { font-family: var(--font-display); font-weight:700; font-size:14px; text-transform:uppercase; letter-spacing:0.03em; color: var(--ink); }
       .ps-journal__day-stats { font-size:12px; color:#8A94A0; }
       .ps-journal__entries { display:flex; flex-direction:column; gap:1px; background: var(--line); border-radius:10px; overflow:hidden; }
-      .ps-journal__entry { display:grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr; gap:10px; align-items:center; background: var(--panel); padding:10px 14px; font-size:12.5px; border:none; width:100%; text-align:left; font-family: var(--font-body); color: var(--ink); cursor:pointer; }
+      .ps-journal__entry { display:grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1.3fr 1fr; gap:10px; align-items:center; background: var(--panel); padding:10px 14px; font-size:12.5px; border:none; width:100%; text-align:left; font-family: var(--font-body); color: var(--ink); cursor:pointer; }
       .ps-journal__entry:hover { background:#F0F4F7; }
       .ps-journal__client { font-weight:600; }
       .ps-journal__vol { font-family: var(--font-mono); color:#5B6770; }

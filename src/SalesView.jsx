@@ -35,6 +35,7 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
   const [period, setPeriod] = useState("all"); // 'all' | 'today' | 'yesterday' | 'custom'
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  const [onlyUnshipped, setOnlyUnshipped] = useState(false);
   const clientById = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
 
   const openCustomPeriod = () => {
@@ -57,6 +58,7 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
     let out = enriched;
     if (fuelFilter) out = out.filter((s) => s.fuel === fuelFilter);
     if (managerFilter) out = out.filter((s) => s.createdBy === managerFilter);
+    if (onlyUnshipped) out = out.filter((s) => !s.shipped);
     if (period === "today") out = out.filter((s) => s.saleDate === todayIso());
     else if (period === "yesterday") out = out.filter((s) => s.saleDate === yesterdayIso());
     else if (period === "custom") {
@@ -67,9 +69,11 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
       out = out.filter((s) => [s.clientName, s.fuel, s.comment, s.createdBy].some((v) => (v || "").toLowerCase().includes(q)));
     }
     return [...out].sort((a, b) => (b.saleDate || "").localeCompare(a.saleDate || "") || b.createdAt - a.createdAt);
-  }, [enriched, search, fuelFilter, managerFilter, period, customFrom, customTo]);
+  }, [enriched, search, fuelFilter, managerFilter, onlyUnshipped, period, customFrom, customTo]);
 
   const grandTotal = filtered.reduce((a, s) => a + toNum(s.sum), 0);
+  const unshipped = useMemo(() => filtered.filter((s) => !s.shipped), [filtered]);
+  const unshippedSum = unshipped.reduce((a, s) => a + toNum(s.sum), 0);
 
   const periodLabel = period === "all" ? "За всё время"
     : period === "today" ? "За сегодня"
@@ -87,13 +91,13 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
   }, [filtered]);
 
   const exportExcel = () => {
-    const headers = ["Дата", "Клиент", "Топливо", "Цена, ₽/л", "Объём, л", "Тара", "Цена тары, ₽", "Залог, ₽", "Сумма, ₽", "Менеджер", "Комментарий"];
+    const headers = ["Дата", "Клиент", "Топливо", "Цена, ₽/л", "Объём, л", "Тара", "Кол-во тары, шт", "Цена тары, ₽", "Залог, ₽", "Сумма, ₽", "Отгружено", "Дата отгрузки", "Менеджер", "Комментарий"];
     const body = filtered.map((s) => [
       s.saleDate, s.clientName, s.fuel, toNum(s.price), toNum(s.volume),
-      s.containerMode ? CONTAINER_LABELS[s.containerMode] : "", toNum(s.containerPrice) || "", toNum(s.containerDeposit) || "",
-      toNum(s.sum), s.createdBy, s.comment,
+      s.containerMode ? CONTAINER_LABELS[s.containerMode] : "", toNum(s.containerQty) || "", toNum(s.containerPrice) || "", toNum(s.containerDeposit) || "",
+      toNum(s.sum), s.shipped ? "Да" : "Нет", s.shippedDate || "", s.createdBy, s.comment,
     ]);
-    body.push(["", "", "", "", "", "", "", "", grandTotal, "", "ИТОГО"]);
+    body.push(["", "", "", "", "", "", "", "", "", grandTotal, "", "", "", "ИТОГО"]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...body]);
     ws["!cols"] = headers.map(() => ({ wch: 18 }));
     const wb = XLSX.utils.book_new();
@@ -117,6 +121,7 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
           <option value="">Все менеджеры</option>
           {managers.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
+        <button className={`ps-chip ${onlyUnshipped ? "ps-chip--on" : ""}`} onClick={() => setOnlyUnshipped((v) => !v)}>Не отгружено</button>
         <div className="ps-toolbar__spacer" />
         <button className="ps-btn" onClick={exportExcel}><Download size={15} /> Excel</button>
         <button className="ps-btn ps-btn--primary" style={{ width: "auto" }} onClick={() => onOpenSell(null)}><Plus size={15} /> Продать</button>
@@ -143,6 +148,12 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
         <span className="ps-period-summary__stat"><b>{filtered.length}</b> сделок</span>
         <span className="ps-period-summary__divider" />
         <span className="ps-period-summary__stat ps-period-summary__stat--sum"><b>{fmtInt(grandTotal)}</b> ₽ выручка</span>
+        {unshipped.length > 0 && (
+          <>
+            <span className="ps-period-summary__divider" />
+            <span className="ps-period-summary__stat ps-period-summary__stat--warn"><b>{unshipped.length}</b> не отгружено ({fmtInt(unshippedSum)} ₽)</span>
+          </>
+        )}
       </div>
 
       <div className="ps-journal">
@@ -165,6 +176,11 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
                     <span className="ps-journal__vol">{fmtInt(toNum(s.volume))} л</span>
                     <span className="ps-journal__payment">{s.paymentMethod || "—"}</span>
                     <span className="ps-journal__sum">{fmtInt(toNum(s.sum))} ₽</span>
+                    <span>
+                      {s.shipped
+                        ? <span className="ps-ship-badge ps-ship-badge--done">Отгружено{s.shippedDate ? " " + shortDate(s.shippedDate) : ""}</span>
+                        : <span className="ps-ship-badge ps-ship-badge--pending">Не отгружено</span>}
+                    </span>
                     <span className="ps-journal__manager">{s.createdBy ? <span style={{ color: colorForName(s.createdBy) }}>{s.createdBy}</span> : "—"}</span>
                   </button>
                 ))}

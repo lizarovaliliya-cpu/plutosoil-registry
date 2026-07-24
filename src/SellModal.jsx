@@ -30,6 +30,9 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
   const [containerMode, setContainerMode] = useState(sale?.containerMode || "");
   const [containerPrice, setContainerPrice] = useState(sale?.containerPrice ?? "");
   const [containerDeposit, setContainerDeposit] = useState(sale?.containerDeposit ?? "");
+  const [containerQty, setContainerQty] = useState(sale?.containerQty || "1");
+  const [shipped, setShipped] = useState(sale?.shipped || false);
+  const [shippedDate, setShippedDate] = useState(sale?.shippedDate || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -47,8 +50,10 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fuel, paymentMethod, prices]);
 
+  const qty = toNum(containerQty) || 1;
   const fuelSum = toNum(price) * toNum(volume);
-  const containerSum = containerMode === "buy" || containerMode === "rent" ? toNum(containerPrice) : 0;
+  const containerSum = containerMode === "buy" || containerMode === "rent" ? toNum(containerPrice) * qty : 0;
+  const depositSum = containerMode === "rent" ? toNum(containerDeposit) * qty : 0;
   const sum = fuelSum + containerSum;
   const isEdit = !!sale;
 
@@ -59,6 +64,8 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
     const payload = toDbSale({
       clientId, fuel, price, volume, sum, saleDate, paymentMethod, comment,
       containerMode, containerPrice, containerDeposit,
+      containerQty: containerMode === "buy" || containerMode === "rent" ? containerQty : "",
+      shipped, shippedDate,
       createdBy: sale?.createdBy || managerName || "Гость",
     });
     const { error: err } = isEdit
@@ -120,19 +127,31 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
             </select>
           </label>
           {containerMode === "buy" && (
-            <label className="ps-field">
-              <span>Цена тары, ₽</span>
-              <input type="number" min="0" step="1" value={containerPrice} onChange={(e) => setContainerPrice(e.target.value)} placeholder="0" />
-            </label>
-          )}
-          {containerMode === "rent" && (
-            <>
+            <div className="ps-field-row">
               <label className="ps-field">
-                <span>Цена аренды тары, ₽</span>
+                <span>Цена за 1 шт, ₽</span>
                 <input type="number" min="0" step="1" value={containerPrice} onChange={(e) => setContainerPrice(e.target.value)} placeholder="0" />
               </label>
               <label className="ps-field">
-                <span>Сумма залога, ₽</span>
+                <span>Количество, шт</span>
+                <input type="number" min="1" step="1" value={containerQty} onChange={(e) => setContainerQty(e.target.value)} placeholder="1" />
+              </label>
+            </div>
+          )}
+          {containerMode === "rent" && (
+            <>
+              <div className="ps-field-row">
+                <label className="ps-field">
+                  <span>Цена аренды за 1 шт, ₽</span>
+                  <input type="number" min="0" step="1" value={containerPrice} onChange={(e) => setContainerPrice(e.target.value)} placeholder="0" />
+                </label>
+                <label className="ps-field">
+                  <span>Количество, шт</span>
+                  <input type="number" min="1" step="1" value={containerQty} onChange={(e) => setContainerQty(e.target.value)} placeholder="1" />
+                </label>
+              </div>
+              <label className="ps-field">
+                <span>Залог за 1 шт, ₽</span>
                 <input type="number" min="0" step="1" value={containerDeposit} onChange={(e) => setContainerDeposit(e.target.value)} placeholder="0" />
               </label>
             </>
@@ -141,16 +160,29 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
             <span>Сумма</span>
             <div className="ps-sell-sum">{fmtInt(sum)} ₽</div>
             {containerSum > 0 && (
-              <div className="ps-sell-sum__breakdown">топливо {fmtInt(fuelSum)} ₽ + тара {fmtInt(containerSum)} ₽</div>
+              <div className="ps-sell-sum__breakdown">топливо {fmtInt(fuelSum)} ₽ + тара {fmtInt(containerSum)} ₽ ({qty} шт)</div>
             )}
-            {containerMode === "rent" && toNum(containerDeposit) > 0 && (
-              <div className="ps-sell-sum__breakdown">+ залог {fmtInt(toNum(containerDeposit))} ₽ (не входит в выручку)</div>
+            {containerMode === "rent" && depositSum > 0 && (
+              <div className="ps-sell-sum__breakdown">+ залог {fmtInt(depositSum)} ₽ ({qty} шт, не входит в выручку)</div>
             )}
           </div>
           <label className="ps-field">
             <span>Дата продажи</span>
             <input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} />
           </label>
+          <label className="ps-check-field">
+            <input type="checkbox" checked={shipped} onChange={(e) => {
+              setShipped(e.target.checked);
+              if (e.target.checked && !shippedDate) setShippedDate(isoToday());
+            }} />
+            <span>Отгружено</span>
+          </label>
+          {shipped && (
+            <label className="ps-field">
+              <span>Дата отгрузки</span>
+              <input type="date" value={shippedDate} onChange={(e) => setShippedDate(e.target.value)} />
+            </label>
+          )}
           <label className="ps-field">
             <span>Комментарий</span>
             <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Необязательно" />
