@@ -48,6 +48,7 @@ export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
+  const [authName, setAuthName] = useState("");
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [presenceList, setPresenceList] = useState([]);
@@ -68,7 +69,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (session?.user?.email) setManagerName(session.user.email.split("@")[0]);
+    if (session?.user) setManagerName(session.user.user_metadata?.full_name || session.user.email.split("@")[0]);
     else { setManagerName(""); setRows([]); setLoaded(false); }
   }, [session]);
 
@@ -76,7 +77,10 @@ export default function App() {
     e.preventDefault();
     setAuthError("");
     setAuthLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
+    const { data, error } = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
+    if (!error && authName.trim() && data?.user?.user_metadata?.full_name !== authName.trim()) {
+      await supabase.auth.updateUser({ data: { full_name: authName.trim() } });
+    }
     setAuthLoading(false);
     if (error) setAuthError(error.message === "Invalid login credentials" ? "Неверный email или пароль." : error.message);
   };
@@ -297,6 +301,7 @@ export default function App() {
             <form onSubmit={handleSignIn}>
               <input autoFocus type="email" autoComplete="username" className="ps-gate__input" placeholder="Email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
               <input type="password" autoComplete="current-password" className="ps-gate__input" placeholder="Пароль" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} />
+              <input type="text" className="ps-gate__input" placeholder="Ваше имя (как показывать вас в системе)" value={authName} onChange={(e) => setAuthName(e.target.value)} />
               <button type="submit" className="ps-btn ps-btn--primary" disabled={!authEmail.trim() || !authPassword || authLoading}>
                 <LogIn size={16} /> {authLoading ? "Входим…" : "Войти"}
               </button>
