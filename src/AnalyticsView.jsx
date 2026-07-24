@@ -50,6 +50,7 @@ export default function AnalyticsView({ sales, clients, rows }) {
 
   const inRange = (iso) => {
     if (!iso) return false;
+    if (period === "today") return iso === todayIso();
     if (period === "7d") return iso >= daysAgoIso(6);
     if (period === "30d") return iso >= daysAgoIso(29);
     if (period === "custom") return (!customFrom || iso >= customFrom) && (!customTo || iso <= customTo);
@@ -132,13 +133,14 @@ export default function AnalyticsView({ sales, clients, rows }) {
       .slice(0, 5);
   }, [filteredSales, clients]);
 
-  const periodLabel = period === "all" ? "за всё время" : period === "7d" ? "за 7 дней" : period === "30d" ? "за 30 дней" : "за период";
+  const periodLabel = period === "all" ? "за всё время" : period === "today" ? "за сегодня" : period === "7d" ? "за 7 дней" : period === "30d" ? "за 30 дней" : "за период";
 
   return (
     <>
       <div className="ps-toolbar">
         <div className="ps-chips">
           <button className={`ps-chip ${period === "all" ? "ps-chip--on" : ""}`} onClick={() => setPeriod("all")}>Всё время</button>
+          <button className={`ps-chip ${period === "today" ? "ps-chip--on" : ""}`} onClick={() => setPeriod("today")}>Сегодня</button>
           <button className={`ps-chip ${period === "7d" ? "ps-chip--on" : ""}`} onClick={() => setPeriod("7d")}>7 дней</button>
           <button className={`ps-chip ${period === "30d" ? "ps-chip--on" : ""}`} onClick={() => setPeriod("30d")}>30 дней</button>
           <button className={`ps-chip ${period === "custom" ? "ps-chip--on" : ""}`} onClick={openCustomPeriod}>Период</button>
