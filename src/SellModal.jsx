@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { X, ShoppingCart, Trash2, Plus } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { toNum, fmtInt, toDbSale } from "./utils.js";
-import { FUELS, SuggestDropdown } from "./shared.jsx";
+import { FUELS, SuggestDropdown, SOURCES } from "./shared.jsx";
 
 const PAYMENT_METHODS = ["Наличные", "Безналичный", "Карта"];
 const CONTAINER_MODES = [
@@ -25,6 +25,7 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
   const [newCompany, setNewCompany] = useState("");
   const [newContact, setNewContact] = useState("");
   const [newPhone, setNewPhone] = useState("");
+  const [newSource, setNewSource] = useState("");
   const [suggestField, setSuggestField] = useState(null); // 'company' | 'contact' | 'phone' | null
   const [creatingClient, setCreatingClient] = useState(false);
   const [fuel, setFuel] = useState(sale?.fuel || FUELS[0]);
@@ -90,7 +91,7 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
 
   const cancelNewClient = () => {
     setNewClientMode(false);
-    setNewCompany(""); setNewContact(""); setNewPhone(""); setSuggestField(null);
+    setNewCompany(""); setNewContact(""); setNewPhone(""); setNewSource(""); setSuggestField(null);
   };
 
   const pickExistingClient = (c) => {
@@ -103,7 +104,7 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
     setCreatingClient(true);
     const created = await onCreateClient({
       company: newCompany.trim(), contactName: newContact.trim(), phone: newPhone.trim(),
-      source: "", inn: "", kpp: "", ogrn: "", legalAddress: "", bankDetails: "", comment: "",
+      source: newSource, inn: "", kpp: "", ogrn: "", legalAddress: "", bankDetails: "", comment: "",
       fileUrl: "", fileName: "", assignedTo: managerName || "",
     });
     setCreatingClient(false);
@@ -164,6 +165,10 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
                     onFocus={() => setSuggestField("phone")} onBlur={() => setTimeout(() => setSuggestField((f) => (f === "phone" ? null : f)), 150)} />
                   {suggestField === "phone" && <SuggestDropdown items={suggestionsFor(newPhone)} onPick={pickExistingClient} />}
                 </div>
+                <select value={newSource} onChange={(e) => setNewSource(e.target.value)}>
+                  <option value="">Источник — не указан</option>
+                  {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
                 <div className="ps-new-client__actions">
                   <button type="button" className="ps-btn" onClick={cancelNewClient}>Отмена</button>
                   <button type="button" className="ps-btn ps-btn--primary" style={{ width: "auto" }}

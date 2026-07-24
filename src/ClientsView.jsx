@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { genId, toNum, fmtInt, colorForName } from "./utils.js";
-import { FUELS, STATUSES, Cell, FuelGauge, CONTAINER_LABELS, SuggestDropdown } from "./shared.jsx";
+import { FUELS, STATUSES, Cell, FuelGauge, CONTAINER_LABELS, SuggestDropdown, SOURCES } from "./shared.jsx";
 
 const emptyClient = (managerName) => ({
   id: null, clientNo: null, company: "", contactName: "", phone: "", source: "",
@@ -240,7 +240,11 @@ export default function ClientsView({
               </label>
               <label className="ps-field">
                 <span>Источник</span>
-                <input value={draft.source} onChange={(e) => setDraft({ ...draft, source: e.target.value })} placeholder="Откуда клиент" />
+                <select value={draft.source} onChange={(e) => setDraft({ ...draft, source: e.target.value })}>
+                  <option value="">Не указан</option>
+                  {draft.source && !SOURCES.includes(draft.source) && <option value={draft.source}>{draft.source}</option>}
+                  {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
               </label>
               <label className="ps-field">
                 <span>Закреплён за менеджером</span>

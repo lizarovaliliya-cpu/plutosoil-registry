@@ -528,8 +528,8 @@ function GlobalStyle() {
       .ps-link-btn { display:inline-flex; align-items:center; gap:3px; border:none; background:transparent; color: var(--petrol-2); font-size:12px; font-weight:600; cursor:pointer; padding:0; }
       .ps-link-btn:hover { color: var(--petrol); text-decoration:underline; }
       .ps-new-client { display:flex; flex-direction:column; gap:8px; background:#EEF1F4; border-radius:12px; padding:12px; margin-top:5px; }
-      .ps-new-client input { width:100%; border:1px solid var(--line); border-radius:9px; padding:9px 11px; font-size:13.5px; font-family: var(--font-body); color: var(--ink); background: var(--panel); }
-      .ps-new-client input:focus { outline:2px solid var(--petrol-2); outline-offset:1px; }
+      .ps-new-client input, .ps-new-client select { width:100%; border:1px solid var(--line); border-radius:9px; padding:9px 11px; font-size:13.5px; font-family: var(--font-body); color: var(--ink); background: var(--panel); }
+      .ps-new-client input:focus, .ps-new-client select:focus { outline:2px solid var(--petrol-2); outline-offset:1px; }
       .ps-new-client__actions { display:flex; justify-content:flex-end; gap:8px; }
       .ps-check-field { display:flex; align-items:center; gap:8px; font-size:13.5px; color: var(--ink); cursor:pointer; }
       .ps-check-field input { width:16px; height:16px; cursor:pointer; }
