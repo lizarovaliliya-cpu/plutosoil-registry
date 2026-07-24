@@ -426,6 +426,9 @@ function GlobalStyle() {
       .ps-chip { border:1px solid var(--line); background: var(--panel); border-radius:20px; padding:6px 12px; font-size:12px; cursor:pointer; color:#5B6770; }
       .ps-chip--on { background: var(--petrol); border-color: var(--petrol); color:#fff; }
       .ps-select-filter { border:1px solid var(--line); background: var(--panel); border-radius:9px; padding:8px 12px; font-size:12.5px; color: var(--ink); }
+      .ps-toolbar--period { padding-top:0; margin-top:-4px; }
+      .ps-period-range { display:flex; align-items:center; gap:8px; font-size:12.5px; color:#5B6770; }
+      .ps-period-range input { border:1px solid var(--line); background: var(--panel); border-radius:9px; padding:7px 10px; font-size:12.5px; color: var(--ink); font-family: var(--font-body); }
       .ps-tablewrap { overflow:auto; margin:0 22px 8px; border:1px solid var(--line); border-radius:14px; background:var(--panel); flex:1; }
       .ps-table { border-collapse:collapse; width:100%; font-size:12.5px; }
       .ps-table thead th { position:sticky; top:0; background:#F6F8F9; border-bottom:1px solid var(--line); text-align:left; padding:10px 10px; font-family: var(--font-display); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:#5B6770; cursor:pointer; white-space:nowrap; user-select:none; z-index:1; }

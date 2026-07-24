@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Plus, Search, X, ShoppingCart, Download } from "lucide-react";
+import { Plus, Search, X, ShoppingCart, Download, CalendarRange } from "lucide-react";
 import * as XLSX from "xlsx";
 import { fmtInt, toNum, colorForName, todayStr } from "./utils.js";
 import { FUELS } from "./shared.jsx";
@@ -14,11 +14,28 @@ const formatDay = (isoDate) => {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${WEEKDAYS[d.getDay()]}`;
 };
 
+const isoOf = (d) => {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+const todayIso = () => isoOf(new Date());
+const yesterdayIso = () => { const d = new Date(); d.setDate(d.getDate() - 1); return isoOf(d); };
+const daysAgoIso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return isoOf(d); };
+
 export default function SalesView({ sales, salesLoaded, clients, managerName, onOpenSell }) {
   const [search, setSearch] = useState("");
   const [fuelFilter, setFuelFilter] = useState(null);
   const [managerFilter, setManagerFilter] = useState("");
+  const [period, setPeriod] = useState("all"); // 'all' | 'today' | 'yesterday' | 'custom'
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const clientById = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
+
+  const openCustomPeriod = () => {
+    setPeriod("custom");
+    if (!customFrom) setCustomFrom(daysAgoIso(6));
+    if (!customTo) setCustomTo(todayIso());
+  };
 
   const managers = useMemo(() => {
     const set = new Set(sales.map((s) => s.createdBy).filter(Boolean));
@@ -34,12 +51,17 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
     let out = enriched;
     if (fuelFilter) out = out.filter((s) => s.fuel === fuelFilter);
     if (managerFilter) out = out.filter((s) => s.createdBy === managerFilter);
+    if (period === "today") out = out.filter((s) => s.saleDate === todayIso());
+    else if (period === "yesterday") out = out.filter((s) => s.saleDate === yesterdayIso());
+    else if (period === "custom") {
+      out = out.filter((s) => (!customFrom || s.saleDate >= customFrom) && (!customTo || s.saleDate <= customTo));
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       out = out.filter((s) => [s.clientName, s.fuel, s.comment, s.createdBy].some((v) => (v || "").toLowerCase().includes(q)));
     }
     return [...out].sort((a, b) => (b.saleDate || "").localeCompare(a.saleDate || "") || b.createdAt - a.createdAt);
-  }, [enriched, search, fuelFilter, managerFilter]);
+  }, [enriched, search, fuelFilter, managerFilter, period, customFrom, customTo]);
 
   const grandTotal = filtered.reduce((a, s) => a + toNum(s.sum), 0);
 
@@ -84,6 +106,22 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
         <span className="ps-sales-total">{filtered.length} сделок · {fmtInt(grandTotal)} ₽</span>
         <button className="ps-btn" onClick={exportExcel}><Download size={15} /> Excel</button>
         <button className="ps-btn ps-btn--primary" style={{ width: "auto" }} onClick={() => onOpenSell(null)}><Plus size={15} /> Продать</button>
+      </div>
+
+      <div className="ps-toolbar ps-toolbar--period">
+        <div className="ps-chips">
+          <button className={`ps-chip ${period === "all" ? "ps-chip--on" : ""}`} onClick={() => setPeriod("all")}>Всё время</button>
+          <button className={`ps-chip ${period === "today" ? "ps-chip--on" : ""}`} onClick={() => setPeriod("today")}>Сегодня</button>
+          <button className={`ps-chip ${period === "yesterday" ? "ps-chip--on" : ""}`} onClick={() => setPeriod("yesterday")}>Вчера</button>
+          <button className={`ps-chip ${period === "custom" ? "ps-chip--on" : ""}`} onClick={openCustomPeriod}><CalendarRange size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Период</button>
+        </div>
+        {period === "custom" && (
+          <div className="ps-period-range">
+            <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+            <span>—</span>
+            <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+          </div>
+        )}
       </div>
 
       <div className="ps-journal">
