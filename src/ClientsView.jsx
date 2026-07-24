@@ -1,26 +1,10 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Plus, Search, X, Building2, Phone, User2, Paperclip, Trash2,
-  FileText, ChevronDown, ChevronUp, Loader2
+  FileText, ChevronDown, ChevronUp, Loader2, ShoppingCart
 } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
-import { genId, toNum, fmtInt, todayStr, colorForName } from "./utils.js";
-
-const fromDbClient = (c) => ({
-  id: c.id, clientNo: c.client_no, company: c.company || "", contactName: c.contact_name || "",
-  phone: c.phone || "", source: c.source || "", inn: c.inn || "", kpp: c.kpp || "",
-  ogrn: c.ogrn || "", legalAddress: c.legal_address || "", bankDetails: c.bank_details || "",
-  comment: c.comment || "", fileUrl: c.company_file_url || "", fileName: c.company_file_name || "",
-  assignedTo: c.assigned_to || "", createdBy: c.created_by || "",
-  createdAt: c.created_at ? new Date(c.created_at).getTime() : 0,
-});
-
-const toDbClient = (c) => ({
-  company: c.company, contact_name: c.contactName, phone: c.phone, source: c.source,
-  inn: c.inn, kpp: c.kpp, ogrn: c.ogrn, legal_address: c.legalAddress, bank_details: c.bankDetails,
-  comment: c.comment, company_file_url: c.fileUrl, company_file_name: c.fileName,
-  assigned_to: c.assignedTo,
-});
+import { genId, toNum, fmtInt, colorForName } from "./utils.js";
 
 const emptyClient = (managerName) => ({
   id: null, clientNo: null, company: "", contactName: "", phone: "", source: "",
@@ -28,35 +12,13 @@ const emptyClient = (managerName) => ({
   fileUrl: "", fileName: "", assignedTo: managerName || "", createdBy: managerName || "",
 });
 
-export default function ClientsView({ rows, managerName }) {
-  const [clients, setClients] = useState([]);
-  const [loaded, setLoaded] = useState(false);
+export default function ClientsView({ clients, loaded, rows, sales, managerName, onCreate, onUpdate, onDelete, onSell }) {
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState(null); // client being created/edited in the drawer, null = closed
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [reqOpen, setReqOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-
-  useEffect(() => {
-    let channel;
-    (async () => {
-      const { data } = await supabase.from("clients").select("*").order("created_at", { ascending: false });
-      setClients((data || []).map(fromDbClient));
-      setLoaded(true);
-      channel = supabase.channel("clients-changes")
-        .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, (payload) => {
-          setClients((prev) => {
-            if (payload.eventType === "DELETE") return prev.filter((c) => c.id !== payload.old.id);
-            const incoming = fromDbClient(payload.new);
-            const exists = prev.some((c) => c.id === incoming.id);
-            return exists ? prev.map((c) => (c.id === incoming.id ? incoming : c)) : [incoming, ...prev];
-          });
-        })
-        .subscribe();
-    })();
-    return () => { if (channel) supabase.removeChannel(channel); };
-  }, []);
 
   const historyByClient = useMemo(() => {
     const map = new Map();
@@ -68,10 +30,21 @@ export default function ClientsView({ rows, managerName }) {
     return map;
   }, [rows]);
 
+  const salesByClient = useMemo(() => {
+    const map = new Map();
+    sales.forEach((s) => {
+      if (!s.clientId) return;
+      if (!map.has(s.clientId)) map.set(s.clientId, []);
+      map.get(s.clientId).push(s);
+    });
+    return map;
+  }, [sales]);
+
   const statsFor = (clientId) => {
     const hist = historyByClient.get(clientId) || [];
-    const sum = hist.reduce((a, r) => a + toNum(r.purchaseSum), 0);
-    return { count: hist.length, sum };
+    const sold = salesByClient.get(clientId) || [];
+    const sum = hist.reduce((a, r) => a + toNum(r.purchaseSum), 0) + sold.reduce((a, s) => a + toNum(s.sum), 0);
+    return { count: hist.length + sold.length, sum };
   };
 
   const filtered = useMemo(() => {
@@ -87,23 +60,15 @@ export default function ClientsView({ rows, managerName }) {
   const saveDraft = async () => {
     if (!draft.company.trim()) return;
     setSaving(true);
-    if (draft.id) {
-      const { error } = await supabase.from("clients").update(toDbClient(draft)).eq("id", draft.id);
-      if (!error) setClients((prev) => prev.map((c) => (c.id === draft.id ? { ...draft } : c)));
-    } else {
-      const maxNo = clients.reduce((m, c) => Math.max(m, toNum(c.clientNo)), 0);
-      const payload = { ...toDbClient(draft), client_no: maxNo + 1, created_by: managerName || "Гость" };
-      const { data, error } = await supabase.from("clients").insert([payload]).select().single();
-      if (!error && data) setClients((prev) => [fromDbClient(data), ...prev]);
-    }
+    if (draft.id) await onUpdate(draft);
+    else await onCreate(draft);
     setSaving(false);
     closeDrawer();
   };
 
   const removeClient = async () => {
     if (!deleteConfirm) { setDeleteConfirm(true); return; }
-    await supabase.from("clients").delete().eq("id", draft.id);
-    setClients((prev) => prev.filter((c) => c.id !== draft.id));
+    await onDelete(draft.id);
     closeDrawer();
   };
 
@@ -221,7 +186,21 @@ export default function ClientsView({ rows, managerName }) {
 
               {draft.id && (
                 <div className="ps-history">
-                  <div className="ps-history__head">История покупок</div>
+                  <div className="ps-history__row-head">
+                    <div className="ps-history__head">Продажи</div>
+                    <button type="button" className="ps-btn" style={{ width: "auto" }} onClick={() => onSell(draft.id)}><ShoppingCart size={13} /> Оформить продажу</button>
+                  </div>
+                  {(salesByClient.get(draft.id) || []).length === 0 && <div className="ps-history__empty">Пока нет оформленных продаж.</div>}
+                  {(salesByClient.get(draft.id) || []).map((s) => (
+                    <div key={s.id} className="ps-history__row">
+                      <span className="ps-history__fuel">{s.fuel || "—"}</span>
+                      <span>{s.saleDate}</span>
+                      <span>{fmtInt(toNum(s.volume))} л</span>
+                      <span className="ps-history__sum">{fmtInt(toNum(s.sum))} ₽</span>
+                    </div>
+                  ))}
+
+                  <div className="ps-history__head" style={{ marginTop: 14 }}>История в реестре</div>
                   {(historyByClient.get(draft.id) || []).length === 0 && <div className="ps-history__empty">Пока нет сделок в реестре.</div>}
                   {(historyByClient.get(draft.id) || []).map((r) => (
                     <div key={r.id} className="ps-history__row">

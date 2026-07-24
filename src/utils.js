@@ -21,6 +21,33 @@ export const toNum = (v) => {
 export const fmtInt = (n) => Math.round(n).toLocaleString("ru-RU");
 export const fmtT = (n) => (n / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 
+export const fromDbClient = (c) => ({
+  id: c.id, clientNo: c.client_no, company: c.company || "", contactName: c.contact_name || "",
+  phone: c.phone || "", source: c.source || "", inn: c.inn || "", kpp: c.kpp || "",
+  ogrn: c.ogrn || "", legalAddress: c.legal_address || "", bankDetails: c.bank_details || "",
+  comment: c.comment || "", fileUrl: c.company_file_url || "", fileName: c.company_file_name || "",
+  assignedTo: c.assigned_to || "", createdBy: c.created_by || "",
+  createdAt: c.created_at ? new Date(c.created_at).getTime() : 0,
+});
+
+export const toDbClient = (c) => ({
+  company: c.company, contact_name: c.contactName, phone: c.phone, source: c.source,
+  inn: c.inn, kpp: c.kpp, ogrn: c.ogrn, legal_address: c.legalAddress, bank_details: c.bankDetails,
+  comment: c.comment, company_file_url: c.fileUrl, company_file_name: c.fileName,
+  assigned_to: c.assignedTo,
+});
+
+export const fromDbSale = (s) => ({
+  id: s.id, clientId: s.client_id, fuel: s.fuel || "", price: s.price ?? "", volume: s.volume ?? "",
+  sum: s.sum ?? "", saleDate: s.sale_date || "", comment: s.comment || "", createdBy: s.created_by || "",
+  createdAt: s.created_at ? new Date(s.created_at).getTime() : 0,
+});
+
+export const toDbSale = (s) => ({
+  client_id: s.clientId, fuel: s.fuel, price: toNum(s.price), volume: toNum(s.volume),
+  sum: toNum(s.sum), sale_date: s.saleDate, comment: s.comment, created_by: s.createdBy,
+});
+
 export function timeAgo(ts) {
   if (!ts) return "";
   const s = Math.floor((Date.now() - ts) / 1000);

@@ -1,14 +1,19 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Search, Plus, Trash2, Download, Users, RefreshCw, Clock, X, Fuel,
-  ArrowUpDown, ArrowUp, ArrowDown, Gauge, LogIn, LogOut, WifiOff
+  ArrowUpDown, ArrowUp, ArrowDown, Gauge, LogIn, LogOut, WifiOff, ShoppingCart
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { supabase } from "./supabaseClient.js";
 import { SEED_DATA } from "./seedData.js";
-import { genId, todayStr, toNum, fmtInt, fmtT, timeAgo, colorForName } from "./utils.js";
+import {
+  genId, todayStr, toNum, fmtInt, fmtT, timeAgo, colorForName,
+  fromDbClient, toDbClient, fromDbSale,
+} from "./utils.js";
 import Sidebar from "./Sidebar.jsx";
 import ClientsView from "./ClientsView.jsx";
+import SalesView from "./SalesView.jsx";
+import SellModal from "./SellModal.jsx";
 
 /* ============================================================
    PlutosOil — Реестр покупателей топлива
@@ -112,6 +117,11 @@ export default function App() {
   const [sortDir, setSortDir] = useState("asc");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [view, setView] = useState("registry");
+  const [clients, setClients] = useState([]);
+  const [clientsLoaded, setClientsLoaded] = useState(false);
+  const [sales, setSales] = useState([]);
+  const [salesLoaded, setSalesLoaded] = useState(false);
+  const [sellModal, setSellModal] = useState(null); // { clientId } | null
   const [, forceTick] = useState(0);
   const presenceChannelRef = useRef(null);
 
@@ -168,6 +178,65 @@ export default function App() {
     })();
     return () => { if (rowsChannel) supabase.removeChannel(rowsChannel); };
   }, [session]);
+
+  /* ---- клиенты: загрузка + realtime ---- */
+  useEffect(() => {
+    if (!session) { setClients([]); setClientsLoaded(false); return; }
+    let channel;
+    (async () => {
+      const { data } = await supabase.from("clients").select("*").order("created_at", { ascending: false });
+      setClients((data || []).map(fromDbClient));
+      setClientsLoaded(true);
+      channel = supabase.channel("clients-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "clients" }, (payload) => {
+          setClients((prev) => {
+            if (payload.eventType === "DELETE") return prev.filter((c) => c.id !== payload.old.id);
+            const incoming = fromDbClient(payload.new);
+            const exists = prev.some((c) => c.id === incoming.id);
+            return exists ? prev.map((c) => (c.id === incoming.id ? incoming : c)) : [incoming, ...prev];
+          });
+        })
+        .subscribe();
+    })();
+    return () => { if (channel) supabase.removeChannel(channel); };
+  }, [session]);
+
+  /* ---- продажи: загрузка + realtime ---- */
+  useEffect(() => {
+    if (!session) { setSales([]); setSalesLoaded(false); return; }
+    let channel;
+    (async () => {
+      const { data } = await supabase.from("sales").select("*").order("sale_date", { ascending: false });
+      setSales((data || []).map(fromDbSale));
+      setSalesLoaded(true);
+      channel = supabase.channel("sales-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, (payload) => {
+          setSales((prev) => {
+            if (payload.eventType === "DELETE") return prev.filter((s) => s.id !== payload.old.id);
+            const incoming = fromDbSale(payload.new);
+            const exists = prev.some((s) => s.id === incoming.id);
+            return exists ? prev.map((s) => (s.id === incoming.id ? incoming : s)) : [incoming, ...prev];
+          });
+        })
+        .subscribe();
+    })();
+    return () => { if (channel) supabase.removeChannel(channel); };
+  }, [session]);
+
+  const createClient = async (draft) => {
+    const maxNo = clients.reduce((m, c) => Math.max(m, toNum(c.clientNo)), 0);
+    const payload = { ...toDbClient(draft), client_no: maxNo + 1, created_by: managerName || "Гость" };
+    const { data, error } = await supabase.from("clients").insert([payload]).select().single();
+    if (!error && data) setClients((prev) => [fromDbClient(data), ...prev]);
+  };
+  const updateClient = async (draft) => {
+    const { error } = await supabase.from("clients").update(toDbClient(draft)).eq("id", draft.id);
+    if (!error) setClients((prev) => prev.map((c) => (c.id === draft.id ? { ...draft } : c)));
+  };
+  const deleteClient = async (id) => {
+    await supabase.from("clients").delete().eq("id", id);
+    setClients((prev) => prev.filter((c) => c.id !== id));
+  };
 
   /* ---- присутствие менеджеров (Supabase Presence) ---- */
   useEffect(() => {
@@ -341,7 +410,7 @@ export default function App() {
         <Sidebar view={view} setView={setView} />
         <div className="ps-main">
           <header className="ps-header">
-            <div className="ps-header__brand"><Fuel size={20} /><span>PlutosOil</span><span className="ps-header__sub">{view === "registry" ? "Реестр покупателей" : "Клиенты"}</span></div>
+            <div className="ps-header__brand"><Fuel size={20} /><span>PlutosOil</span><span className="ps-header__sub">{{ registry: "Реестр покупателей", clients: "Клиенты", sales: "Продажи" }[view]}</span></div>
             <div className="ps-header__presence">
               <Users size={14} />
               <div className="ps-avatars">
@@ -352,11 +421,21 @@ export default function App() {
             <div className="ps-header__sync">
               {connError ? <><WifiOff size={13} /> нет связи с базой</> : <><RefreshCw size={13} className={syncing ? "ps-spin" : ""} />{syncing ? "сохранение…" : lastSync ? `синхронизировано ${timeAgo(lastSync)}` : "…"}</>}
             </div>
+            <button className="ps-btn ps-header__sell" onClick={() => setSellModal({ clientId: null })}><ShoppingCart size={14} /> Продать</button>
             <button className="ps-btn ps-header__logout" onClick={() => supabase.auth.signOut()}><LogOut size={14} /> Выйти</button>
           </header>
 
           {view === "clients" ? (
-            <ClientsView rows={rows} managerName={managerName} />
+            <ClientsView
+              clients={clients} loaded={clientsLoaded} rows={rows} sales={sales} managerName={managerName}
+              onCreate={createClient} onUpdate={updateClient} onDelete={deleteClient}
+              onSell={(clientId) => setSellModal({ clientId })}
+            />
+          ) : view === "sales" ? (
+            <SalesView
+              sales={sales} salesLoaded={salesLoaded} clients={clients} managerName={managerName}
+              onOpenSell={(clientId) => setSellModal({ clientId })}
+            />
           ) : (
             <>
               <div className="ps-dash">
@@ -441,6 +520,12 @@ export default function App() {
           )}
         </div>
       </div>
+      {sellModal && (
+        <SellModal
+          clients={clients} managerName={managerName} presetClientId={sellModal.clientId}
+          onClose={() => setSellModal(null)}
+        />
+      )}
     </div>
   );
 }
@@ -484,6 +569,8 @@ function GlobalStyle() {
       .ps-header__sync { display:flex; align-items:center; gap:6px; font-size:11.5px; opacity:0.75; }
       .ps-header__logout { background:transparent; border-color:rgba(255,255,255,0.3); color:#fff; opacity:0.85; }
       .ps-header__logout:hover { background:rgba(255,255,255,0.1); border-color:rgba(255,255,255,0.5); opacity:1; }
+      .ps-header__sell { background: var(--amber); border-color: var(--amber); color:#10151C; font-weight:600; }
+      .ps-header__sell:hover { filter: brightness(1.05); }
       .ps-spin { animation: ps-spin 0.9s linear infinite; }
       @keyframes ps-spin { to { transform: rotate(360deg); } }
       .ps-dash { display:grid; grid-template-columns: repeat(3, 1fr) 1.1fr; gap:12px; padding:16px 22px; }
@@ -555,8 +642,11 @@ function GlobalStyle() {
       .ps-drawer__body { flex:1; overflow:auto; padding:18px 22px; display:flex; flex-direction:column; gap:12px; }
       .ps-drawer__foot { display:flex; align-items:center; gap:8px; padding:14px 22px; border-top:1px solid var(--line); background: var(--panel); }
       .ps-field { display:flex; flex-direction:column; gap:5px; font-size:12.5px; color:#5B6770; }
-      .ps-field input, .ps-field textarea { border:1px solid var(--line); border-radius:9px; padding:9px 11px; font-size:13.5px; font-family: var(--font-body); color: var(--ink); resize: vertical; }
-      .ps-field input:focus, .ps-field textarea:focus { outline:2px solid var(--petrol-2); outline-offset:1px; }
+      .ps-field input, .ps-field textarea, .ps-field select { border:1px solid var(--line); border-radius:9px; padding:9px 11px; font-size:13.5px; font-family: var(--font-body); color: var(--ink); resize: vertical; background: var(--panel); }
+      .ps-field input:focus, .ps-field textarea:focus, .ps-field select:focus { outline:2px solid var(--petrol-2); outline-offset:1px; }
+      .ps-sell-sum { font-family: var(--font-mono); font-size:20px; font-weight:600; color: var(--petrol); padding:8px 0; }
+      .ps-sales-total { font-size:12.5px; color:#5B6770; white-space:nowrap; }
+      .ps-history__row-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
       .ps-req-toggle { display:flex; align-items:center; gap:6px; border:none; background:transparent; color: var(--petrol-2); font-size:12.5px; font-weight:600; cursor:pointer; padding:4px 0; align-self:flex-start; }
       .ps-fieldset { display:flex; flex-direction:column; gap:12px; background:#EEF1F4; border-radius:12px; padding:14px; }
       .ps-file-btn { display:inline-flex; width:auto; cursor:pointer; }

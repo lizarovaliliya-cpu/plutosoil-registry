@@ -118,3 +118,39 @@ create policy "authenticated manage client-files" on storage.objects
   for all to authenticated
   using (bucket_id = 'client-files')
   with check (bucket_id = 'client-files');
+
+-- ============================================================
+-- Продажи (этап 3): отдельный журнал фактических продаж —
+-- клиент, топливо, цена, объём, сумма, дата. Не путать с полями
+-- "Куплено"/"Сумма" в registry_rows — те остаются как ручной
+-- текущий срез по реестру; sales — это точный лог сделок для
+-- карточки клиента и будущей аналитики.
+-- ============================================================
+create table if not exists sales (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid references clients(id) on delete set null,
+  fuel text default '',
+  price numeric,
+  volume numeric,
+  sum numeric,
+  sale_date date default current_date,
+  comment text default '',
+  created_by text default '',
+  created_at timestamptz default now()
+);
+
+alter table sales enable row level security;
+
+drop policy if exists "authenticated read" on sales;
+create policy "authenticated read" on sales for select to authenticated using (true);
+
+drop policy if exists "authenticated insert" on sales;
+create policy "authenticated insert" on sales for insert to authenticated with check (true);
+
+drop policy if exists "authenticated update" on sales;
+create policy "authenticated update" on sales for update to authenticated using (true);
+
+drop policy if exists "authenticated delete" on sales;
+create policy "authenticated delete" on sales for delete to authenticated using (true);
+
+alter publication supabase_realtime add table sales;

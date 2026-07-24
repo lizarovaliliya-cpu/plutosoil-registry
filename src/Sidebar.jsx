@@ -4,7 +4,7 @@ import { Fuel, Table, Building2, ShoppingCart, BarChart3 } from "lucide-react";
 const ITEMS = [
   { key: "registry", label: "Реестр", icon: Table },
   { key: "clients", label: "Клиенты", icon: Building2 },
-  { key: "sales", label: "Продажи", icon: ShoppingCart, soon: true },
+  { key: "sales", label: "Продажи", icon: ShoppingCart },
   { key: "analytics", label: "Аналитика", icon: BarChart3, soon: true },
 ];
 
