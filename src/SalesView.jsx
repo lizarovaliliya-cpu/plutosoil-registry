@@ -21,6 +21,12 @@ const isoOf = (d) => {
 const todayIso = () => isoOf(new Date());
 const yesterdayIso = () => { const d = new Date(); d.setDate(d.getDate() - 1); return isoOf(d); };
 const daysAgoIso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return isoOf(d); };
+const shortDate = (iso) => {
+  const d = new Date(iso + "T00:00:00");
+  if (isNaN(d)) return iso;
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}`;
+};
 
 export default function SalesView({ sales, salesLoaded, clients, managerName, onOpenSell }) {
   const [search, setSearch] = useState("");
@@ -65,6 +71,11 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
 
   const grandTotal = filtered.reduce((a, s) => a + toNum(s.sum), 0);
 
+  const periodLabel = period === "all" ? "За всё время"
+    : period === "today" ? "За сегодня"
+    : period === "yesterday" ? "За вчера"
+    : `С ${shortDate(customFrom)} по ${shortDate(customTo)}`;
+
   const days = useMemo(() => {
     const map = new Map();
     filtered.forEach((s) => {
@@ -103,7 +114,6 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
           {managers.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
         <div className="ps-toolbar__spacer" />
-        <span className="ps-sales-total">{filtered.length} сделок · {fmtInt(grandTotal)} ₽</span>
         <button className="ps-btn" onClick={exportExcel}><Download size={15} /> Excel</button>
         <button className="ps-btn ps-btn--primary" style={{ width: "auto" }} onClick={() => onOpenSell(null)}><Plus size={15} /> Продать</button>
       </div>
@@ -122,6 +132,13 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
             <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
           </div>
         )}
+      </div>
+
+      <div className="ps-period-summary">
+        <span className="ps-period-summary__label">{periodLabel}</span>
+        <span className="ps-period-summary__stat"><b>{filtered.length}</b> сделок</span>
+        <span className="ps-period-summary__divider" />
+        <span className="ps-period-summary__stat ps-period-summary__stat--sum"><b>{fmtInt(grandTotal)}</b> ₽ выручка</span>
       </div>
 
       <div className="ps-journal">

@@ -471,7 +471,12 @@ function GlobalStyle() {
       .ps-field input, .ps-field textarea, .ps-field select { border:1px solid var(--line); border-radius:9px; padding:9px 11px; font-size:13.5px; font-family: var(--font-body); color: var(--ink); resize: vertical; background: var(--panel); }
       .ps-field input:focus, .ps-field textarea:focus, .ps-field select:focus { outline:2px solid var(--petrol-2); outline-offset:1px; }
       .ps-sell-sum { font-family: var(--font-mono); font-size:20px; font-weight:600; color: var(--petrol); padding:8px 0; }
-      .ps-sales-total { font-size:12.5px; color:#5B6770; white-space:nowrap; }
+      .ps-period-summary { display:flex; align-items:center; gap:14px; margin:0 22px 16px; padding:14px 20px; background: var(--ink); color:#fff; border-radius:14px; }
+      .ps-period-summary__label { font-family: var(--font-display); font-weight:600; font-size:13px; opacity:0.7; }
+      .ps-period-summary__stat { font-size:13.5px; opacity:0.9; }
+      .ps-period-summary__stat b { font-family: var(--font-mono); font-size:18px; font-weight:700; margin-right:4px; }
+      .ps-period-summary__stat--sum b { color: var(--amber); }
+      .ps-period-summary__divider { width:1px; height:20px; background:rgba(255,255,255,0.2); }
       .ps-history__row-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
       .ps-req-toggle { display:flex; align-items:center; gap:6px; border:none; background:transparent; color: var(--petrol-2); font-size:12.5px; font-weight:600; cursor:pointer; padding:4px 0; align-self:flex-start; }
       .ps-suggest { position:absolute; top:100%; left:0; right:0; margin-top:4px; background: var(--panel); border:1px solid var(--line); border-radius:10px; box-shadow:0 4px 16px rgba(16,21,28,0.12); z-index:20; overflow:hidden; }
