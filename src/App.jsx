@@ -1,15 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import {
-  Search, Plus, Trash2, Download, Users, RefreshCw, Clock, X, Fuel,
-  ArrowUpDown, ArrowUp, ArrowDown, Gauge, LogIn, LogOut, WifiOff, ShoppingCart
-} from "lucide-react";
+import { Users, RefreshCw, LogIn, LogOut, WifiOff, ShoppingCart, Fuel } from "lucide-react";
 import * as XLSX from "xlsx";
 import { supabase } from "./supabaseClient.js";
 import { SEED_DATA } from "./seedData.js";
 import {
-  genId, todayStr, toNum, fmtInt, fmtT, timeAgo, colorForName,
+  genId, todayStr, toNum, fmtInt, timeAgo, colorForName,
   fromDbClient, toDbClient, fromDbSale,
 } from "./utils.js";
+import { FUELS, DENSITY } from "./shared.jsx";
 import Sidebar from "./Sidebar.jsx";
 import ClientsView from "./ClientsView.jsx";
 import SalesView from "./SalesView.jsx";
@@ -21,21 +19,6 @@ import SellModal from "./SellModal.jsx";
    видят правки друг друга мгновенно (Postgres Realtime),
    плюс присутствие "кто сейчас в реестре" (Supabase Presence).
    ============================================================ */
-
-const FUELS = ["АИ-92", "АИ-95", "ДТ К5"];
-const DENSITY = { "АИ-92": 0.745, "АИ-95": 0.75, "ДТ К5": 0.84 }; // кг/л, из исходного реестра
-
-const STATUSES = [
-  { value: "", label: "Новый", color: "#7A8794", bg: "#EEF1F4" },
-  { value: "КП отправлено", label: "КП отправлено", color: "#175983", bg: "#DCEAF3" },
-  { value: "Проект договора", label: "Проект договора", color: "#7C5CBF", bg: "#EEE8FA" },
-  { value: "Счёт выставлен", label: "Счёт выставлен", color: "#B9770E", bg: "#FBEEDA" },
-  { value: "Уточняет", label: "Уточняет", color: "#C9750E", bg: "#FCEBD3" },
-  { value: "Думает", label: "Думает", color: "#D68A1E", bg: "#FDF0DC" },
-  { value: "Купили", label: "Купили", color: "#1E8A56", bg: "#E1F4EA" },
-  { value: "Отказ", label: "Отказ", color: "#C13B3B", bg: "#FBE4E4" },
-];
-const statusMeta = (v) => STATUSES.find((s) => s.value === (v || "")) || STATUSES[0];
 
 /* ---- преобразование camelCase (UI) <-> snake_case (Supabase) ---- */
 const fromDb = (r) => ({
@@ -51,50 +34,8 @@ const toDb = (r) => ({
   update_date: r.updateDate, status: r.status, stated_need: r.statedNeed,
   purchased: r.purchased === "" ? null : toNum(r.purchased),
   purchase_sum: r.purchaseSum === "" ? null : toNum(r.purchaseSum),
-  comment: r.comment, updated_by: r.updatedBy,
+  comment: r.comment, updated_by: r.updatedBy, client_id: r.clientId || null,
 });
-
-/* ---------- инлайн-редактируемая ячейка ---------- */
-function Cell({ value, onCommit, type = "text", options, align, mono, placeholder }) {
-  const [local, setLocal] = useState(value ?? "");
-  useEffect(() => setLocal(value ?? ""), [value]);
-  const commit = () => { if (local !== (value ?? "")) onCommit(local); };
-
-  if (type === "select") {
-    return (
-      <select className="ps-select" value={local ?? ""} onChange={(e) => { setLocal(e.target.value); onCommit(e.target.value); }}
-        style={{ color: statusMeta(local).color, background: statusMeta(local).bg }}>
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    );
-  }
-  if (type === "fuel") {
-    return (
-      <select className="ps-select ps-select--fuel" value={local ?? ""} onChange={(e) => { setLocal(e.target.value); onCommit(e.target.value); }}>
-        <option value="">—</option>
-        {FUELS.map((f) => <option key={f} value={f}>{f}</option>)}
-      </select>
-    );
-  }
-  return (
-    <input className="ps-input" style={{ textAlign: align || "left", fontFamily: mono ? "var(--font-mono)" : "inherit" }}
-      type={type} value={local ?? ""} placeholder={placeholder}
-      onChange={(e) => setLocal(e.target.value)} onBlur={commit}
-      onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }} />
-  );
-}
-
-function FuelGauge({ fuel, stats }) {
-  const pct = stats.weekly > 0 ? Math.min(100, (stats.purchased / stats.weekly) * 100) : 0;
-  return (
-    <div className="ps-gauge">
-      <div className="ps-gauge__top"><span className="ps-gauge__fuel">{fuel}</span><span className="ps-gauge__pct">{pct.toFixed(0)}%</span></div>
-      <div className="ps-gauge__track"><div className="ps-gauge__fill" style={{ width: `${pct}%` }} /></div>
-      <div className="ps-gauge__nums"><span><b>{fmtInt(stats.purchased)}</b> л куплено</span><span className="ps-gauge__need">из {fmtInt(stats.weekly)} л/нед</span></div>
-      <div className="ps-gauge__meta">{stats.count} заявок · ≈{fmtT(stats.weekly * DENSITY[fuel])} т/нед · {fmtInt(stats.sum)} ₽ выручки</div>
-    </div>
-  );
-}
 
 export default function App() {
   const [rows, setRows] = useState([]);
@@ -110,13 +51,7 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [presenceList, setPresenceList] = useState([]);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState(null);
-  const [fuelFilter, setFuelFilter] = useState(null);
-  const [sortKey, setSortKey] = useState("no");
-  const [sortDir, setSortDir] = useState("asc");
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const [view, setView] = useState("registry");
+  const [view, setView] = useState("clients");
   const [clients, setClients] = useState([]);
   const [clientsLoaded, setClientsLoaded] = useState(false);
   const [sales, setSales] = useState([]);
@@ -275,12 +210,13 @@ export default function App() {
     setLastSync(Date.now());
   }, [managerName]);
 
-  const addRow = async () => {
+  const addDealForClient = async (client) => {
     const maxNo = rows.reduce((m, r) => Math.max(m, toNum(r.no)), 0);
     const row = {
-      id: genId(), no: maxNo + 1, name: "", contact: "", source: "", phone: "",
-      fuel: "ДТ К5", weeklyNeed: "", updateDate: todayStr(), status: "", statedNeed: "",
+      id: genId(), no: maxNo + 1, name: client.company, contact: client.contactName, source: client.source,
+      phone: client.phone, fuel: "", weeklyNeed: "", updateDate: todayStr(), status: "", statedNeed: "",
       purchased: "", purchaseSum: "", comment: "", updatedBy: managerName || "Гость", updatedAt: Date.now(),
+      clientId: client.id,
     };
     setRows((prev) => [...prev, row]);
     setSyncing(true);
@@ -291,8 +227,6 @@ export default function App() {
   };
 
   const removeRow = async (id) => {
-    if (deleteConfirm !== id) { setDeleteConfirm(id); setTimeout(() => setDeleteConfirm((c) => (c === id ? null : c)), 3000); return; }
-    setDeleteConfirm(null);
     setRows((prev) => prev.filter((r) => r.id !== id));
     setSyncing(true);
     const { error } = await supabase.from("registry_rows").delete().eq("id", id);
@@ -302,26 +236,6 @@ export default function App() {
   };
 
   const actualize = (id) => commitField(id, "updateDate", todayStr());
-
-  const filtered = useMemo(() => {
-    let out = rows;
-    if (statusFilter !== null) out = out.filter((r) => (r.status || "") === statusFilter);
-    if (fuelFilter) out = out.filter((r) => r.fuel === fuelFilter);
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      out = out.filter((r) => [r.name, r.contact, r.phone, r.source, r.comment, r.statedNeed].some((v) => (v || "").toString().toLowerCase().includes(q)));
-    }
-    const dir = sortDir === "asc" ? 1 : -1;
-    out = [...out].sort((a, b) => {
-      let av = a[sortKey], bv = b[sortKey];
-      if (["no", "weeklyNeed", "purchased", "purchaseSum"].includes(sortKey)) { av = toNum(av); bv = toNum(bv); }
-      else { av = (av || "").toString().toLowerCase(); bv = (bv || "").toString().toLowerCase(); }
-      if (av < bv) return -1 * dir;
-      if (av > bv) return 1 * dir;
-      return 0;
-    });
-    return out;
-  }, [rows, search, statusFilter, fuelFilter, sortKey, sortDir]);
 
   const summary = useMemo(() => {
     const byFuel = {};
@@ -342,19 +256,11 @@ export default function App() {
     return { byFuel, totalClients: clientSet.size, totalSum, totalPurchased, totalRows: rows.length };
   }, [rows]);
 
-  const toggleSort = (key) => {
-    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortKey(key); setSortDir("asc"); }
-  };
-  const SortIcon = ({ colKey }) => sortKey !== colKey
-    ? <ArrowUpDown size={12} className="ps-sorticon ps-sorticon--idle" />
-    : (sortDir === "asc" ? <ArrowUp size={12} className="ps-sorticon" /> : <ArrowDown size={12} className="ps-sorticon" />);
-
   const exportExcel = () => {
     const headers = ["№", "Наименование", "Контактное лицо", "Источник", "Номер телефона", "Вид топлива",
       "Недельная потребность, л", "Дата актуализации", "Статус", "Заявленная потребность (исх.)",
       "Куплено", "Сумма покупки, ₽", "Комментарий", "Изменил", "Когда изменено"];
-    const body = filtered.map((r) => [r.no, r.name, r.contact, r.source, r.phone, r.fuel, toNum(r.weeklyNeed) || r.weeklyNeed,
+    const body = rows.map((r) => [r.no, r.name, r.contact, r.source, r.phone, r.fuel, toNum(r.weeklyNeed) || r.weeklyNeed,
       r.updateDate, r.status, r.statedNeed, toNum(r.purchased) || r.purchased, toNum(r.purchaseSum) || r.purchaseSum,
       r.comment, r.updatedBy, r.updatedAt ? new Date(r.updatedAt).toLocaleString("ru-RU") : ""]);
     const ws1 = XLSX.utils.aoa_to_sheet([headers, ...body]);
@@ -365,9 +271,9 @@ export default function App() {
     const ws2 = XLSX.utils.aoa_to_sheet([sumHeaders, ...sumBody]);
     ws2["!cols"] = sumHeaders.map(() => ({ wch: 20 }));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws1, "Реестр покупателей");
+    XLSX.utils.book_append_sheet(wb, ws1, "Клиенты и заявки");
     XLSX.utils.book_append_sheet(wb, ws2, "Сводная");
-    XLSX.writeFile(wb, `Реестр_покупателей_PlutosOil_${todayStr().replace(/\./g, "-")}.xlsx`);
+    XLSX.writeFile(wb, `PlutosOil_${todayStr().replace(/\./g, "-")}.xlsx`);
   };
 
   if (!authChecked) {
@@ -410,7 +316,7 @@ export default function App() {
         <Sidebar view={view} setView={setView} />
         <div className="ps-main">
           <header className="ps-header">
-            <div className="ps-header__brand"><Fuel size={20} /><span>PlutosOil</span><span className="ps-header__sub">{{ registry: "Реестр покупателей", clients: "Клиенты", sales: "Продажи" }[view]}</span></div>
+            <div className="ps-header__brand"><Fuel size={20} /><span>PlutosOil</span><span className="ps-header__sub">{{ clients: "Клиенты", sales: "Реестр сделок" }[view]}</span></div>
             <div className="ps-header__presence">
               <Users size={14} />
               <div className="ps-avatars">
@@ -425,98 +331,20 @@ export default function App() {
             <button className="ps-btn ps-header__logout" onClick={() => supabase.auth.signOut()}><LogOut size={14} /> Выйти</button>
           </header>
 
-          {view === "clients" ? (
-            <ClientsView
-              clients={clients} loaded={clientsLoaded} rows={rows} sales={sales} managerName={managerName}
-              onCreate={createClient} onUpdate={updateClient} onDelete={deleteClient}
-              onSell={(clientId) => setSellModal({ clientId })}
-            />
-          ) : view === "sales" ? (
+          {view === "sales" ? (
             <SalesView
               sales={sales} salesLoaded={salesLoaded} clients={clients} managerName={managerName}
               onOpenSell={(clientId) => setSellModal({ clientId })}
             />
           ) : (
-            <>
-              <div className="ps-dash">
-                {FUELS.map((f) => <FuelGauge key={f} fuel={f} stats={summary.byFuel[f]} />)}
-                <div className="ps-dash__total">
-                  <div className="ps-dash__total-row"><Gauge size={14} /><span>Итого по реестру</span></div>
-                  <div className="ps-dash__total-num">{summary.totalClients}</div>
-                  <div className="ps-dash__total-label">клиентов · {summary.totalRows} заявок</div>
-                  <div className="ps-dash__total-sum">{fmtInt(summary.totalSum)} ₽</div>
-                  <div className="ps-dash__total-label">выручка от закупок на сейчас</div>
-                </div>
-              </div>
-
-              <div className="ps-toolbar">
-                <div className="ps-search">
-                  <Search size={15} />
-                  <input placeholder="Поиск: компания, контакт, телефон, комментарий…" value={search} onChange={(e) => setSearch(e.target.value)} />
-                  {search && <X size={14} className="ps-search__clear" onClick={() => setSearch("")} />}
-                </div>
-                <div className="ps-chips">
-                  <button className={`ps-chip ${fuelFilter === null ? "ps-chip--on" : ""}`} onClick={() => setFuelFilter(null)}>Все виды</button>
-                  {FUELS.map((f) => <button key={f} className={`ps-chip ${fuelFilter === f ? "ps-chip--on" : ""}`} onClick={() => setFuelFilter(fuelFilter === f ? null : f)}>{f}</button>)}
-                </div>
-                <div className="ps-chips">
-                  <button className={`ps-chip ${statusFilter === null ? "ps-chip--on" : ""}`} onClick={() => setStatusFilter(null)}>Все статусы</button>
-                  {STATUSES.filter((s) => s.value).map((s) => (
-                    <button key={s.value} className={`ps-chip ${statusFilter === s.value ? "ps-chip--on" : ""}`}
-                      style={statusFilter === s.value ? { background: s.bg, color: s.color, borderColor: s.color } : {}}
-                      onClick={() => setStatusFilter(statusFilter === s.value ? null : s.value)}>{s.label}</button>
-                  ))}
-                </div>
-                <div className="ps-toolbar__spacer" />
-                <button className="ps-btn" onClick={exportExcel}><Download size={15} /> Excel</button>
-                <button className="ps-btn ps-btn--primary" onClick={addRow}><Plus size={15} /> Покупатель</button>
-              </div>
-
-              <div className="ps-tablewrap">
-                <table className="ps-table">
-                  <thead>
-                    <tr>
-                      <th onClick={() => toggleSort("no")}>№ <SortIcon colKey="no" /></th>
-                      <th onClick={() => toggleSort("name")} className="ps-th-wide">Наименование <SortIcon colKey="name" /></th>
-                      <th>Контакт</th><th>Источник</th><th>Телефон</th><th>Топливо</th>
-                      <th onClick={() => toggleSort("weeklyNeed")}>Потр., л/нед <SortIcon colKey="weeklyNeed" /></th>
-                      <th className="ps-th-wide">Заявлено (исх.)</th>
-                      <th onClick={() => toggleSort("updateDate")}>Актуализация <SortIcon colKey="updateDate" /></th>
-                      <th onClick={() => toggleSort("status")}>Статус <SortIcon colKey="status" /></th>
-                      <th onClick={() => toggleSort("purchased")}>Куплено, л <SortIcon colKey="purchased" /></th>
-                      <th onClick={() => toggleSort("purchaseSum")}>Сумма, ₽ <SortIcon colKey="purchaseSum" /></th>
-                      <th className="ps-th-wide">Комментарий</th><th>Изменил</th><th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map((r) => (
-                      <tr key={r.id}>
-                        <td className="ps-td-no">{r.no}</td>
-                        <td><Cell value={r.name} onCommit={(v) => commitField(r.id, "name", v)} placeholder="Компания" /></td>
-                        <td><Cell value={r.contact} onCommit={(v) => commitField(r.id, "contact", v)} placeholder="Контакт" /></td>
-                        <td><Cell value={r.source} onCommit={(v) => commitField(r.id, "source", v)} placeholder="Источник" /></td>
-                        <td><Cell value={r.phone} onCommit={(v) => commitField(r.id, "phone", v)} mono placeholder="+7…" /></td>
-                        <td><Cell type="fuel" value={r.fuel} onCommit={(v) => commitField(r.id, "fuel", v)} /></td>
-                        <td><Cell type="number" align="right" mono value={r.weeklyNeed} onCommit={(v) => commitField(r.id, "weeklyNeed", v)} /></td>
-                        <td><Cell value={r.statedNeed} onCommit={(v) => commitField(r.id, "statedNeed", v)} placeholder="со слов клиента" /></td>
-                        <td className="ps-td-date">
-                          <Cell value={r.updateDate} onCommit={(v) => commitField(r.id, "updateDate", v)} mono placeholder="дд.мм.гггг" />
-                          <button className="ps-mini" title="Проставить сегодняшнюю дату" onClick={() => actualize(r.id)}><Clock size={12} /></button>
-                        </td>
-                        <td><Cell type="select" options={STATUSES} value={r.status} onCommit={(v) => commitField(r.id, "status", v)} /></td>
-                        <td><Cell type="number" align="right" mono value={r.purchased} onCommit={(v) => commitField(r.id, "purchased", v)} /></td>
-                        <td><Cell type="number" align="right" mono value={r.purchaseSum} onCommit={(v) => commitField(r.id, "purchaseSum", v)} /></td>
-                        <td><Cell value={r.comment} onCommit={(v) => commitField(r.id, "comment", v)} placeholder="—" /></td>
-                        <td className="ps-td-meta">{r.updatedBy ? (<><span style={{ color: colorForName(r.updatedBy) }}>{r.updatedBy}</span><br /><span className="ps-td-meta__time">{timeAgo(r.updatedAt)}</span></>) : "—"}</td>
-                        <td><button className={`ps-del ${deleteConfirm === r.id ? "ps-del--confirm" : ""}`} onClick={() => removeRow(r.id)}>{deleteConfirm === r.id ? "Точно?" : <Trash2 size={14} />}</button></td>
-                      </tr>
-                    ))}
-                    {filtered.length === 0 && <tr><td colSpan={15} className="ps-empty">{loaded ? "Ничего не найдено — попробуйте изменить поиск или фильтры." : "Загрузка…"}</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-              <div className="ps-footnote">Плотность для перевода в тонны (ориентировочно): АИ-92 — 0,745 кг/л, АИ-95 — 0,750 кг/л, ДТ К5 — 0,840 кг/л (из исходного реестра).</div>
-            </>
+            <ClientsView
+              clients={clients} loaded={clientsLoaded} rows={rows} sales={sales} managerName={managerName}
+              summary={summary}
+              onCreate={createClient} onUpdate={updateClient} onDelete={deleteClient}
+              onSell={(clientId) => setSellModal({ clientId })}
+              onCommitField={commitField} onRemoveRow={removeRow} onActualize={actualize}
+              onAddDeal={addDealForClient} onExportExcel={exportExcel}
+            />
           )}
         </div>
       </div>
@@ -597,15 +425,16 @@ function GlobalStyle() {
       .ps-chips { display:flex; gap:6px; flex-wrap:wrap; }
       .ps-chip { border:1px solid var(--line); background: var(--panel); border-radius:20px; padding:6px 12px; font-size:12px; cursor:pointer; color:#5B6770; }
       .ps-chip--on { background: var(--petrol); border-color: var(--petrol); color:#fff; }
+      .ps-select-filter { border:1px solid var(--line); background: var(--panel); border-radius:9px; padding:8px 12px; font-size:12.5px; color: var(--ink); }
       .ps-tablewrap { overflow:auto; margin:0 22px 8px; border:1px solid var(--line); border-radius:14px; background:var(--panel); flex:1; }
-      .ps-table { border-collapse:collapse; width:100%; font-size:12.5px; min-width:1500px; }
+      .ps-table { border-collapse:collapse; width:100%; font-size:12.5px; }
       .ps-table thead th { position:sticky; top:0; background:#F6F8F9; border-bottom:1px solid var(--line); text-align:left; padding:10px 10px; font-family: var(--font-display); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:#5B6770; cursor:pointer; white-space:nowrap; user-select:none; z-index:1; }
       .ps-th-wide { min-width:150px; }
       .ps-sorticon { vertical-align:-1px; margin-left:2px; }
       .ps-sorticon--idle { opacity:0.3; }
       .ps-table tbody tr:nth-child(even) { background:#FAFBFC; }
       .ps-table tbody tr:hover { background:#F0F4F7; }
-      .ps-table td { border-bottom:1px solid #EEF1F3; padding:2px 4px; vertical-align:middle; }
+      .ps-table td { border-bottom:1px solid #EEF1F3; padding:9px 10px; vertical-align:middle; }
       .ps-td-no { text-align:center; font-family: var(--font-mono); color:#8A94A0; padding:2px 8px !important; }
       .ps-td-date { display:flex; align-items:center; gap:2px; white-space:nowrap; }
       .ps-td-meta { font-size:11px; color:#5B6770; white-space:nowrap; padding:4px 8px !important; }
@@ -625,18 +454,12 @@ function GlobalStyle() {
       .ps-del--confirm { color:#fff; background: var(--red); font-size:10.5px; padding:5px 8px; white-space:nowrap; }
       .ps-footnote { padding:8px 22px 16px; font-size:11px; color:#8A94A0; }
 
-      .ps-client-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:12px; padding:0 22px 22px; overflow:auto; flex:1; align-content:start; }
-      .ps-client-card { text-align:left; background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; cursor:pointer; display:flex; flex-direction:column; gap:6px; font-family: var(--font-body); }
-      .ps-client-card:hover { border-color: var(--petrol-2); box-shadow: 0 1px 4px rgba(16,21,28,0.06); }
-      .ps-client-card__top { display:flex; align-items:center; gap:8px; margin-bottom:2px; }
-      .ps-client-card__icon { color: var(--petrol-2); flex-shrink:0; }
-      .ps-client-card__title { font-family: var(--font-display); font-weight:600; font-size:14px; color: var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-      .ps-client-card__row { display:flex; align-items:center; gap:6px; font-size:12px; color:#5B6770; }
-      .ps-client-card__bottom { display:flex; align-items:center; justify-content:space-between; margin-top:8px; }
-      .ps-client-card__stat { font-size:11px; color:#8A94A0; }
+      .ps-client-row { cursor:pointer; }
+      .ps-client-row:hover { background:#F0F4F7; }
+      .ps-client-row__name { font-family: var(--font-display); font-weight:600; }
 
       .ps-drawer__overlay { position:fixed; inset:0; background:rgba(16,21,28,0.35); display:flex; justify-content:flex-end; z-index:50; }
-      .ps-drawer__panel { width:min(460px, 100%); background: var(--paper); height:100%; display:flex; flex-direction:column; box-shadow:-4px 0 20px rgba(16,21,28,0.15); }
+      .ps-drawer__panel { width:min(500px, 100%); background: var(--paper); height:100%; display:flex; flex-direction:column; box-shadow:-4px 0 20px rgba(16,21,28,0.15); }
       .ps-drawer__head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--line); background: var(--panel); }
       .ps-drawer__head h2 { font-family: var(--font-display); font-size:17px; margin:0; }
       .ps-drawer__body { flex:1; overflow:auto; padding:18px 22px; display:flex; flex-direction:column; gap:12px; }
@@ -658,6 +481,25 @@ function GlobalStyle() {
       .ps-history__row { display:grid; grid-template-columns: 1fr 1fr 1.2fr 1fr; gap:6px; font-size:12px; padding:6px 0; border-bottom:1px solid #EEF1F3; }
       .ps-history__fuel { font-weight:600; color: var(--petrol-2); }
       .ps-history__sum { font-family: var(--font-mono); text-align:right; }
+
+      .ps-leadrow { border:1px solid var(--line); border-radius:12px; padding:10px 12px; background: var(--panel); display:flex; flex-direction:column; gap:6px; }
+      .ps-leadrow__top { display:flex; align-items:center; gap:6px; }
+      .ps-leadrow__top .ps-select { flex-shrink:0; }
+      .ps-leadrow__spacer { flex:1; }
+      .ps-leadrow__grid { display:grid; grid-template-columns: 1fr 1fr; gap:6px; }
+      .ps-leadrow__mini { display:flex; flex-direction:column; gap:2px; font-size:10.5px; color:#8A94A0; }
+      .ps-leadrow__mini .ps-td-date { border:1px solid var(--line); border-radius:6px; padding:0 2px; }
+
+      .ps-journal { overflow:auto; margin:0 22px 22px; flex:1; display:flex; flex-direction:column; gap:18px; }
+      .ps-journal__day-head { display:flex; align-items:baseline; justify-content:space-between; padding-bottom:6px; border-bottom:2px solid var(--ink); margin-bottom:8px; }
+      .ps-journal__day-title { font-family: var(--font-display); font-weight:700; font-size:14px; text-transform:uppercase; letter-spacing:0.03em; color: var(--ink); }
+      .ps-journal__day-stats { font-size:12px; color:#8A94A0; }
+      .ps-journal__entries { display:flex; flex-direction:column; gap:1px; background: var(--line); border-radius:10px; overflow:hidden; }
+      .ps-journal__entry { display:grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap:10px; align-items:center; background: var(--panel); padding:10px 14px; font-size:12.5px; }
+      .ps-journal__client { font-weight:600; }
+      .ps-journal__vol { font-family: var(--font-mono); color:#5B6770; }
+      .ps-journal__sum { font-family: var(--font-mono); font-weight:600; color: var(--petrol); }
+      .ps-journal__manager { text-align:right; font-size:12px; }
       @media (max-width: 900px) { .ps-dash { grid-template-columns: 1fr 1fr; } }
     `}</style>
   );

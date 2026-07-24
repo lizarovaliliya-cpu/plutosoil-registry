@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from "react";
 import {
-  Plus, Search, X, Building2, Phone, User2, Paperclip, Trash2,
-  FileText, ChevronDown, ChevronUp, Loader2, ShoppingCart
+  Plus, Search, X, Building2, Paperclip, Trash2, Download,
+  FileText, ChevronDown, ChevronUp, Loader2, ShoppingCart, Clock, Gauge,
+  ArrowUpDown, ArrowUp, ArrowDown
 } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { genId, toNum, fmtInt, colorForName } from "./utils.js";
+import { FUELS, STATUSES, Cell, FuelGauge } from "./shared.jsx";
 
 const emptyClient = (managerName) => ({
   id: null, clientNo: null, company: "", contactName: "", phone: "", source: "",
@@ -12,13 +14,21 @@ const emptyClient = (managerName) => ({
   fileUrl: "", fileName: "", assignedTo: managerName || "", createdBy: managerName || "",
 });
 
-export default function ClientsView({ clients, loaded, rows, sales, managerName, onCreate, onUpdate, onDelete, onSell }) {
+export default function ClientsView({
+  clients, loaded, rows, sales, managerName, summary,
+  onCreate, onUpdate, onDelete, onSell,
+  onCommitField, onRemoveRow, onActualize, onAddDeal, onExportExcel,
+}) {
   const [search, setSearch] = useState("");
+  const [managerFilter, setManagerFilter] = useState("");
+  const [sortKey, setSortKey] = useState("company");
+  const [sortDir, setSortDir] = useState("asc");
   const [draft, setDraft] = useState(null); // client being created/edited in the drawer, null = closed
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [reqOpen, setReqOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [rowDeleteConfirm, setRowDeleteConfirm] = useState(null);
 
   const historyByClient = useMemo(() => {
     const map = new Map();
@@ -44,14 +54,37 @@ export default function ClientsView({ clients, loaded, rows, sales, managerName,
     const hist = historyByClient.get(clientId) || [];
     const sold = salesByClient.get(clientId) || [];
     const sum = hist.reduce((a, r) => a + toNum(r.purchaseSum), 0) + sold.reduce((a, s) => a + toNum(s.sum), 0);
-    return { count: hist.length + sold.length, sum };
+    return { leads: hist.length, deals: sold.length, sum };
   };
 
+  const managers = useMemo(() => {
+    const set = new Set(clients.map((c) => c.assignedTo).filter(Boolean));
+    return [...set].sort((a, b) => a.localeCompare(b, "ru"));
+  }, [clients]);
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return clients;
-    const q = search.trim().toLowerCase();
-    return clients.filter((c) => [c.company, c.contactName, c.phone, c.source, c.assignedTo].some((v) => (v || "").toLowerCase().includes(q)));
-  }, [clients, search]);
+    let out = clients;
+    if (managerFilter) out = out.filter((c) => c.assignedTo === managerFilter);
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      out = out.filter((c) => [c.company, c.contactName, c.phone, c.source, c.assignedTo].some((v) => (v || "").toLowerCase().includes(q)));
+    }
+    const dir = sortDir === "asc" ? 1 : -1;
+    out = [...out].sort((a, b) => {
+      if (sortKey === "sum") return (statsFor(a.id).sum - statsFor(b.id).sum) * dir;
+      if (sortKey === "manager") return a.assignedTo.localeCompare(b.assignedTo, "ru") * dir;
+      return a.company.localeCompare(b.company, "ru") * dir;
+    });
+    return out;
+  }, [clients, search, managerFilter, sortKey, sortDir, historyByClient, salesByClient]);
+
+  const toggleSort = (key) => {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+  const SortIcon = ({ colKey }) => sortKey !== colKey
+    ? <ArrowUpDown size={12} className="ps-sorticon ps-sorticon--idle" />
+    : (sortDir === "asc" ? <ArrowUp size={12} className="ps-sorticon" /> : <ArrowDown size={12} className="ps-sorticon" />);
 
   const openCreate = () => { setDraft(emptyClient(managerName)); setReqOpen(false); setDeleteConfirm(false); };
   const openEdit = (client) => { setDraft({ ...client }); setReqOpen(false); setDeleteConfirm(false); };
@@ -72,6 +105,16 @@ export default function ClientsView({ clients, loaded, rows, sales, managerName,
     closeDrawer();
   };
 
+  const handleRemoveRow = (id) => {
+    if (rowDeleteConfirm !== id) {
+      setRowDeleteConfirm(id);
+      setTimeout(() => setRowDeleteConfirm((c) => (c === id ? null : c)), 3000);
+      return;
+    }
+    setRowDeleteConfirm(null);
+    onRemoveRow(id);
+  };
+
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file || !draft) return;
@@ -90,35 +133,64 @@ export default function ClientsView({ clients, loaded, rows, sales, managerName,
 
   return (
     <>
+      <div className="ps-dash">
+        {FUELS.map((f) => <FuelGauge key={f} fuel={f} stats={summary.byFuel[f]} />)}
+        <div className="ps-dash__total">
+          <div className="ps-dash__total-row"><Gauge size={14} /><span>Итого</span></div>
+          <div className="ps-dash__total-num">{clients.length}</div>
+          <div className="ps-dash__total-label">клиентов · {summary.totalRows} заявок</div>
+          <div className="ps-dash__total-sum">{fmtInt(summary.totalSum)} ₽</div>
+          <div className="ps-dash__total-label">выручка от закупок на сейчас</div>
+        </div>
+      </div>
+
       <div className="ps-toolbar">
         <div className="ps-search">
           <Search size={15} />
           <input placeholder="Поиск: компания, контакт, телефон, менеджер…" value={search} onChange={(e) => setSearch(e.target.value)} />
           {search && <X size={14} className="ps-search__clear" onClick={() => setSearch("")} />}
         </div>
+        <select className="ps-select-filter" value={managerFilter} onChange={(e) => setManagerFilter(e.target.value)}>
+          <option value="">Все менеджеры</option>
+          {managers.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
         <div className="ps-toolbar__spacer" />
+        <button className="ps-btn" onClick={onExportExcel}><Download size={15} /> Excel</button>
         <button className="ps-btn ps-btn--primary" style={{ width: "auto" }} onClick={openCreate}><Plus size={15} /> Добавить клиента</button>
       </div>
 
-      <div className="ps-client-grid">
-        {filtered.map((c) => {
-          const stats = statsFor(c.id);
-          return (
-            <button key={c.id} className="ps-client-card" onClick={() => openEdit(c)}>
-              <div className="ps-client-card__top">
-                <div className="ps-client-card__icon"><Building2 size={16} /></div>
-                <div className="ps-client-card__title">{c.company || "Без названия"}</div>
-              </div>
-              {c.contactName && <div className="ps-client-card__row"><User2 size={12} />{c.contactName}</div>}
-              {c.phone && <div className="ps-client-card__row"><Phone size={12} />{c.phone}</div>}
-              <div className="ps-client-card__bottom">
-                <span className="ps-client-card__stat">{stats.count} сделок · {fmtInt(stats.sum)} ₽</span>
-                {c.assignedTo && <span className="ps-avatar" style={{ background: colorForName(c.assignedTo) }} title={c.assignedTo}>{c.assignedTo.trim().slice(0, 1).toUpperCase()}</span>}
-              </div>
-            </button>
-          );
-        })}
-        {loaded && filtered.length === 0 && <div className="ps-empty" style={{ gridColumn: "1/-1" }}>Клиентов пока нет — нажмите «Добавить клиента».</div>}
+      <div className="ps-tablewrap">
+        <table className="ps-table">
+          <thead>
+            <tr>
+              <th onClick={() => toggleSort("company")} className="ps-th-wide">Компания <SortIcon colKey="company" /></th>
+              <th>Контакт</th><th>Телефон</th><th>Источник</th>
+              <th onClick={() => toggleSort("manager")}>Менеджер <SortIcon colKey="manager" /></th>
+              <th>Заявок</th><th>Продаж</th>
+              <th onClick={() => toggleSort("sum")}>Сумма, ₽ <SortIcon colKey="sum" /></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((c) => {
+              const stats = statsFor(c.id);
+              return (
+                <tr key={c.id} className="ps-client-row" onClick={() => openEdit(c)}>
+                  <td className="ps-client-row__name"><Building2 size={13} style={{ verticalAlign: -2, marginRight: 6, color: "var(--petrol-2)" }} />{c.company || "Без названия"}</td>
+                  <td>{c.contactName || "—"}</td>
+                  <td style={{ fontFamily: "var(--font-mono)" }}>{c.phone || "—"}</td>
+                  <td>{c.source || "—"}</td>
+                  <td>{c.assignedTo ? <span style={{ color: colorForName(c.assignedTo) }}>{c.assignedTo}</span> : "—"}</td>
+                  <td>{stats.leads}</td>
+                  <td>{stats.deals}</td>
+                  <td style={{ fontFamily: "var(--font-mono)" }}>{fmtInt(stats.sum)}</td>
+                </tr>
+              );
+            })}
+            {filtered.length === 0 && (
+              <tr><td colSpan={8} className="ps-empty">{loaded ? "Клиентов не найдено — измените поиск/фильтр или добавьте нового." : "Загрузка…"}</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       {draft && (
@@ -200,16 +272,44 @@ export default function ClientsView({ clients, loaded, rows, sales, managerName,
                     </div>
                   ))}
 
-                  <div className="ps-history__head" style={{ marginTop: 14 }}>История в реестре</div>
-                  {(historyByClient.get(draft.id) || []).length === 0 && <div className="ps-history__empty">Пока нет сделок в реестре.</div>}
-                  {(historyByClient.get(draft.id) || []).map((r) => (
-                    <div key={r.id} className="ps-history__row">
-                      <span className="ps-history__fuel">{r.fuel || "—"}</span>
-                      <span>{r.updateDate}</span>
-                      <span>{r.status || "Новый"}</span>
-                      <span className="ps-history__sum">{r.purchaseSum ? `${fmtInt(toNum(r.purchaseSum))} ₽` : "—"}</span>
-                    </div>
-                  ))}
+                  <div className="ps-history__row-head" style={{ marginTop: 16 }}>
+                    <div className="ps-history__head">Заявки в воронке</div>
+                    <button type="button" className="ps-btn" style={{ width: "auto" }} onClick={() => onAddDeal(draft)}><Plus size={13} /> Добавить заявку</button>
+                  </div>
+                  {(historyByClient.get(draft.id) || []).length === 0 && <div className="ps-history__empty">Пока нет заявок.</div>}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {(historyByClient.get(draft.id) || []).map((r) => (
+                      <div key={r.id} className="ps-leadrow">
+                        <div className="ps-leadrow__top">
+                          <Cell type="fuel" value={r.fuel} onCommit={(v) => onCommitField(r.id, "fuel", v)} />
+                          <Cell type="select" options={STATUSES} value={r.status} onCommit={(v) => onCommitField(r.id, "status", v)} />
+                          <div className="ps-leadrow__spacer" />
+                          <button className="ps-del" onClick={() => handleRemoveRow(r.id)}>
+                            {rowDeleteConfirm === r.id ? <span style={{ fontSize: 10.5 }}>Точно?</span> : <Trash2 size={13} />}
+                          </button>
+                        </div>
+                        <div className="ps-leadrow__grid">
+                          <label className="ps-leadrow__mini">Потр., л/нед
+                            <Cell type="number" align="right" mono value={r.weeklyNeed} onCommit={(v) => onCommitField(r.id, "weeklyNeed", v)} />
+                          </label>
+                          <label className="ps-leadrow__mini">Актуализация
+                            <div className="ps-td-date">
+                              <Cell value={r.updateDate} onCommit={(v) => onCommitField(r.id, "updateDate", v)} mono placeholder="дд.мм.гггг" />
+                              <button className="ps-mini" title="Сегодня" onClick={() => onActualize(r.id)}><Clock size={12} /></button>
+                            </div>
+                          </label>
+                          <label className="ps-leadrow__mini">Куплено, л
+                            <Cell type="number" align="right" mono value={r.purchased} onCommit={(v) => onCommitField(r.id, "purchased", v)} />
+                          </label>
+                          <label className="ps-leadrow__mini">Сумма, ₽
+                            <Cell type="number" align="right" mono value={r.purchaseSum} onCommit={(v) => onCommitField(r.id, "purchaseSum", v)} />
+                          </label>
+                        </div>
+                        <Cell value={r.statedNeed} onCommit={(v) => onCommitField(r.id, "statedNeed", v)} placeholder="Заявлено со слов клиента" />
+                        <Cell value={r.comment} onCommit={(v) => onCommitField(r.id, "comment", v)} placeholder="Комментарий" />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

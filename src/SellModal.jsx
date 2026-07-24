@@ -1,9 +1,8 @@
 import React, { useState, useMemo } from "react";
 import { X, ShoppingCart } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
-import { toNum, fmtInt, todayStr, toDbSale } from "./utils.js";
-
-const FUELS = ["АИ-92", "АИ-95", "ДТ К5"];
+import { toNum, fmtInt, toDbSale } from "./utils.js";
+import { FUELS } from "./shared.jsx";
 
 const isoToday = () => {
   const d = new Date();
