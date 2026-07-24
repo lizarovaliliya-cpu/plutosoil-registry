@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Search, Plus, Trash2, Download, Users, RefreshCw, Clock, X, Fuel,
-  ArrowUpDown, ArrowUp, ArrowDown, Gauge, LogIn, WifiOff
+  ArrowUpDown, ArrowUp, ArrowDown, Gauge, LogIn, LogOut, WifiOff
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { supabase } from "./supabaseClient.js";
@@ -130,7 +130,12 @@ export default function App() {
   const [connError, setConnError] = useState(false);
   const [lastSync, setLastSync] = useState(null);
   const [managerName, setManagerName] = useState("");
-  const [nameInput, setNameInput] = useState("");
+  const [session, setSession] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
   const [presenceList, setPresenceList] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(null);
@@ -141,8 +146,30 @@ export default function App() {
   const [, forceTick] = useState(0);
   const presenceChannelRef = useRef(null);
 
-  /* ---- начальная загрузка + realtime подписка ---- */
+  /* ---- вход по email/паролю (Supabase Auth) ---- */
   useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthChecked(true); });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => setSession(sess));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (session?.user?.email) setManagerName(session.user.email.split("@")[0]);
+    else { setManagerName(""); setRows([]); setLoaded(false); }
+  }, [session]);
+
+  const handleSignIn = async (e) => {
+    e.preventDefault();
+    setAuthError("");
+    setAuthLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({ email: authEmail.trim(), password: authPassword });
+    setAuthLoading(false);
+    if (error) setAuthError(error.message === "Invalid login credentials" ? "Неверный email или пароль." : error.message);
+  };
+
+  /* ---- начальная загрузка + realtime подписка (только для вошедших) ---- */
+  useEffect(() => {
+    if (!session) return;
     let rowsChannel;
     (async () => {
       const { data, error } = await supabase.from("registry_rows").select("*").order("no", { ascending: true });
@@ -171,7 +198,7 @@ export default function App() {
         .subscribe();
     })();
     return () => { if (rowsChannel) supabase.removeChannel(rowsChannel); };
-  }, []);
+  }, [session]);
 
   /* ---- присутствие менеджеров (Supabase Presence) ---- */
   useEffect(() => {
@@ -305,7 +332,16 @@ export default function App() {
     XLSX.writeFile(wb, `Реестр_покупателей_PlutosOil_${todayStr().replace(/\./g, "-")}.xlsx`);
   };
 
-  if (!managerName) {
+  if (!authChecked) {
+    return (
+      <div className="ps-app">
+        <GlobalStyle />
+        <div className="ps-gate"><div className="ps-gate__card">Загрузка…</div></div>
+      </div>
+    );
+  }
+
+  if (!session) {
     return (
       <div className="ps-app">
         <GlobalStyle />
@@ -313,12 +349,16 @@ export default function App() {
           <div className="ps-gate__card">
             <div className="ps-gate__brand"><Fuel size={22} /> PlutosOil</div>
             <h1>Реестр покупателей топлива</h1>
-            <p>Общий инструмент для нескольких менеджеров. Представьтесь, чтобы правки в реестре подписывались вашим именем.</p>
-            <form onSubmit={(e) => { e.preventDefault(); if (nameInput.trim()) setManagerName(nameInput.trim()); }}>
-              <input autoFocus className="ps-gate__input" placeholder="Ваше имя, например: Ирина" value={nameInput} onChange={(e) => setNameInput(e.target.value)} />
-              <button type="submit" className="ps-btn ps-btn--primary" disabled={!nameInput.trim()}><LogIn size={16} /> Войти в реестр</button>
+            <p>Доступ только для сотрудников. Войдите под своим email и паролем.</p>
+            <form onSubmit={handleSignIn}>
+              <input autoFocus type="email" autoComplete="username" className="ps-gate__input" placeholder="Email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
+              <input type="password" autoComplete="current-password" className="ps-gate__input" placeholder="Пароль" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} />
+              <button type="submit" className="ps-btn ps-btn--primary" disabled={!authEmail.trim() || !authPassword || authLoading}>
+                <LogIn size={16} /> {authLoading ? "Входим…" : "Войти"}
+              </button>
             </form>
-            {connError && <p style={{ color: "#C13B3B", marginTop: 12 }}>Не удаётся подключиться к базе данных. Проверьте .env (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY) и что таблица создана.</p>}
+            {authError && <p style={{ color: "#C13B3B", marginTop: 12 }}>{authError}</p>}
+            <p style={{ fontSize: 12, color: "#8A94A0", marginTop: 16 }}>Нет учётной записи? Обратитесь к администратору реестра — доступы выдаются вручную.</p>
           </div>
         </div>
       </div>
@@ -340,6 +380,7 @@ export default function App() {
         <div className="ps-header__sync">
           {connError ? <><WifiOff size={13} /> нет связи с базой</> : <><RefreshCw size={13} className={syncing ? "ps-spin" : ""} />{syncing ? "сохранение…" : lastSync ? `синхронизировано ${timeAgo(lastSync)}` : "…"}</>}
         </div>
+        <button className="ps-btn ps-header__logout" onClick={() => supabase.auth.signOut()}><LogOut size={14} /> Выйти</button>
       </header>
 
       <div className="ps-dash">
@@ -451,6 +492,8 @@ function GlobalStyle() {
       .ps-avatar { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; color:#fff; border:1.5px solid rgba(255,255,255,0.6); }
       .ps-header__you { font-size:12px; opacity:0.85; }
       .ps-header__sync { display:flex; align-items:center; gap:6px; font-size:11.5px; opacity:0.75; }
+      .ps-header__logout { background:transparent; border-color:rgba(255,255,255,0.3); color:#fff; opacity:0.85; }
+      .ps-header__logout:hover { background:rgba(255,255,255,0.1); border-color:rgba(255,255,255,0.5); opacity:1; }
       .ps-spin { animation: ps-spin 0.9s linear infinite; }
       @keyframes ps-spin { to { transform: rotate(360deg); } }
       .ps-dash { display:grid; grid-template-columns: repeat(3, 1fr) 1.1fr; gap:12px; padding:16px 22px; }

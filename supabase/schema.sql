@@ -20,23 +20,27 @@ create table if not exists registry_rows (
   updated_at timestamptz default now()
 );
 
--- Включаем Row Level Security и открываем доступ на чтение/запись всем,
--- у кого есть ссылка + anon-ключ (ключ не даёт доступа ни к чему, кроме этой таблицы).
--- Это подходит для внутренней команды. Если нужен вход по логину/паролю —
--- скажите, добавим Supabase Auth и политики "только свои пользователи".
+-- Включаем Row Level Security: доступ к данным только у вошедших
+-- в систему пользователей (Supabase Auth, email/пароль). Анонимный
+-- посетитель (без входа) не может ни читать, ни менять таблицу.
 alter table registry_rows enable row level security;
 
 drop policy if exists "public read" on registry_rows;
-create policy "public read" on registry_rows for select using (true);
-
 drop policy if exists "public write" on registry_rows;
-create policy "public write" on registry_rows for insert with check (true);
-
 drop policy if exists "public update" on registry_rows;
-create policy "public update" on registry_rows for update using (true);
-
 drop policy if exists "public delete" on registry_rows;
-create policy "public delete" on registry_rows for delete using (true);
+
+drop policy if exists "authenticated read" on registry_rows;
+create policy "authenticated read" on registry_rows for select to authenticated using (true);
+
+drop policy if exists "authenticated insert" on registry_rows;
+create policy "authenticated insert" on registry_rows for insert to authenticated with check (true);
+
+drop policy if exists "authenticated update" on registry_rows;
+create policy "authenticated update" on registry_rows for update to authenticated using (true);
+
+drop policy if exists "authenticated delete" on registry_rows;
+create policy "authenticated delete" on registry_rows for delete to authenticated using (true);
 
 -- Включаем Realtime для мгновенной синхронизации между менеджерами
 alter publication supabase_realtime add table registry_rows;
