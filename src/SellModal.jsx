@@ -1,10 +1,16 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { X, ShoppingCart, Trash2 } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { toNum, fmtInt, toDbSale } from "./utils.js";
 import { FUELS } from "./shared.jsx";
 
 const PAYMENT_METHODS = ["Наличные", "Безналичный", "Карта"];
+const CONTAINER_MODES = [
+  { value: "", label: "Без тары / наливом" },
+  { value: "own", label: "Своя тара клиента" },
+  { value: "buy", label: "Купить тару" },
+  { value: "rent", label: "Аренда тары (под залог)" },
+];
 
 const isoToday = () => {
   const d = new Date();
@@ -12,7 +18,7 @@ const isoToday = () => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
-export default function SellModal({ clients, managerName, presetClientId, sale, onClose }) {
+export default function SellModal({ clients, managerName, presetClientId, sale, prices, onClose }) {
   const sortedClients = useMemo(() => [...clients].sort((a, b) => a.company.localeCompare(b.company, "ru")), [clients]);
   const [clientId, setClientId] = useState(sale?.clientId || presetClientId || (sortedClients[0]?.id ?? ""));
   const [fuel, setFuel] = useState(sale?.fuel || FUELS[0]);
@@ -21,18 +27,40 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
   const [saleDate, setSaleDate] = useState(sale?.saleDate || isoToday());
   const [paymentMethod, setPaymentMethod] = useState(sale?.paymentMethod || PAYMENT_METHODS[0]);
   const [comment, setComment] = useState(sale?.comment || "");
+  const [containerMode, setContainerMode] = useState(sale?.containerMode || "");
+  const [containerPrice, setContainerPrice] = useState(sale?.containerPrice ?? "");
+  const [containerDeposit, setContainerDeposit] = useState(sale?.containerDeposit ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
-  const sum = toNum(price) * toNum(volume);
+  const [autoPrice, setAutoPrice] = useState(sale ? toNum(sale.price) : null);
+  useEffect(() => {
+    const p = (prices || []).find((pr) => pr.fuel === fuel);
+    if (!p) return;
+    const auto = paymentMethod === "Наличные" ? p.priceCash : p.priceCashless;
+    if (auto === "" || auto == null) return;
+    if (price === "" || Number(price) === autoPrice) {
+      setPrice(auto);
+      setAutoPrice(toNum(auto));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fuel, paymentMethod, prices]);
+
+  const fuelSum = toNum(price) * toNum(volume);
+  const containerSum = containerMode === "buy" || containerMode === "rent" ? toNum(containerPrice) : 0;
+  const sum = fuelSum + containerSum;
   const isEdit = !!sale;
 
   const save = async () => {
     if (!clientId || !toNum(price) || !toNum(volume)) return;
     setSaving(true);
     setError("");
-    const payload = toDbSale({ clientId, fuel, price, volume, sum, saleDate, paymentMethod, comment, createdBy: sale?.createdBy || managerName || "Гость" });
+    const payload = toDbSale({
+      clientId, fuel, price, volume, sum, saleDate, paymentMethod, comment,
+      containerMode, containerPrice, containerDeposit,
+      createdBy: sale?.createdBy || managerName || "Гость",
+    });
     const { error: err } = isEdit
       ? await supabase.from("sales").update(payload).eq("id", sale.id)
       : await supabase.from("sales").insert([payload]);
@@ -79,19 +107,49 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
             <span>Объём, л *</span>
             <input type="number" min="0" step="1" value={volume} onChange={(e) => setVolume(e.target.value)} placeholder="0" />
           </label>
-          <div className="ps-field">
-            <span>Сумма</span>
-            <div className="ps-sell-sum">{fmtInt(sum)} ₽</div>
-          </div>
-          <label className="ps-field">
-            <span>Дата продажи</span>
-            <input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} />
-          </label>
           <label className="ps-field">
             <span>Форма оплаты</span>
             <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
               {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
+          </label>
+          <label className="ps-field">
+            <span>Тара</span>
+            <select value={containerMode} onChange={(e) => setContainerMode(e.target.value)}>
+              {CONTAINER_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+          </label>
+          {containerMode === "buy" && (
+            <label className="ps-field">
+              <span>Цена тары, ₽</span>
+              <input type="number" min="0" step="1" value={containerPrice} onChange={(e) => setContainerPrice(e.target.value)} placeholder="0" />
+            </label>
+          )}
+          {containerMode === "rent" && (
+            <>
+              <label className="ps-field">
+                <span>Цена аренды тары, ₽</span>
+                <input type="number" min="0" step="1" value={containerPrice} onChange={(e) => setContainerPrice(e.target.value)} placeholder="0" />
+              </label>
+              <label className="ps-field">
+                <span>Сумма залога, ₽</span>
+                <input type="number" min="0" step="1" value={containerDeposit} onChange={(e) => setContainerDeposit(e.target.value)} placeholder="0" />
+              </label>
+            </>
+          )}
+          <div className="ps-field">
+            <span>Сумма</span>
+            <div className="ps-sell-sum">{fmtInt(sum)} ₽</div>
+            {containerSum > 0 && (
+              <div className="ps-sell-sum__breakdown">топливо {fmtInt(fuelSum)} ₽ + тара {fmtInt(containerSum)} ₽</div>
+            )}
+            {containerMode === "rent" && toNum(containerDeposit) > 0 && (
+              <div className="ps-sell-sum__breakdown">+ залог {fmtInt(toNum(containerDeposit))} ₽ (не входит в выручку)</div>
+            )}
+          </div>
+          <label className="ps-field">
+            <span>Дата продажи</span>
+            <input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} />
           </label>
           <label className="ps-field">
             <span>Комментарий</span>

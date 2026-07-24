@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Users, RefreshCw, LogIn, LogOut, WifiOff, ShoppingCart, Fuel } from "lucide-react";
+import { Users, RefreshCw, LogIn, LogOut, WifiOff, ShoppingCart, Fuel, Tag } from "lucide-react";
 import * as XLSX from "xlsx";
 import { supabase } from "./supabaseClient.js";
 import { SEED_DATA } from "./seedData.js";
 import {
   genId, todayStr, toNum, fmtInt, timeAgo, colorForName,
-  fromDbClient, toDbClient, fromDbSale,
+  fromDbClient, toDbClient, fromDbSale, fromDbPrice,
 } from "./utils.js";
 import { FUELS, DENSITY } from "./shared.jsx";
 import Sidebar from "./Sidebar.jsx";
@@ -13,6 +13,7 @@ import ClientsView from "./ClientsView.jsx";
 import SalesView from "./SalesView.jsx";
 import AnalyticsView from "./AnalyticsView.jsx";
 import SellModal from "./SellModal.jsx";
+import PricesModal from "./PricesModal.jsx";
 
 /* ============================================================
    PlutosOil — Реестр покупателей топлива
@@ -58,7 +59,9 @@ export default function App() {
   const [clientsLoaded, setClientsLoaded] = useState(false);
   const [sales, setSales] = useState([]);
   const [salesLoaded, setSalesLoaded] = useState(false);
+  const [prices, setPrices] = useState([]);
   const [sellModal, setSellModal] = useState(null); // { clientId } | null
+  const [pricesModalOpen, setPricesModalOpen] = useState(false);
   const [, forceTick] = useState(0);
   const presenceChannelRef = useRef(null);
 
@@ -162,6 +165,39 @@ export default function App() {
     })();
     return () => { if (channel) supabase.removeChannel(channel); };
   }, [session]);
+
+  /* ---- цены на топливо: загрузка + realtime ---- */
+  useEffect(() => {
+    if (!session) { setPrices([]); return; }
+    let channel;
+    (async () => {
+      const { data } = await supabase.from("fuel_prices").select("*");
+      setPrices((data || []).map(fromDbPrice));
+      channel = supabase.channel("fuel-prices-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "fuel_prices" }, (payload) => {
+          setPrices((prev) => {
+            if (payload.eventType === "DELETE") return prev.filter((p) => p.fuel !== payload.old.fuel);
+            const incoming = fromDbPrice(payload.new);
+            const exists = prev.some((p) => p.fuel === incoming.fuel);
+            return exists ? prev.map((p) => (p.fuel === incoming.fuel ? incoming : p)) : [...prev, incoming];
+          });
+        })
+        .subscribe();
+    })();
+    return () => { if (channel) supabase.removeChannel(channel); };
+  }, [session]);
+
+  const updatePrice = async (fuel, field, value) => {
+    const num = value === "" ? null : toNum(value);
+    const updatedBy = managerName || "Гость";
+    setPrices((prev) => {
+      const exists = prev.some((p) => p.fuel === fuel);
+      const patch = { fuel, [field]: value === "" ? "" : num, updatedBy, updatedAt: Date.now() };
+      return exists ? prev.map((p) => (p.fuel === fuel ? { ...p, ...patch } : p)) : [...prev, { priceCash: "", priceCashless: "", ...patch }];
+    });
+    const dbField = field === "priceCash" ? "price_cash" : "price_cashless";
+    await supabase.from("fuel_prices").upsert({ fuel, [dbField]: num, updated_by: updatedBy }, { onConflict: "fuel" });
+  };
 
   const createClient = async (draft) => {
     const maxNo = clients.reduce((m, c) => Math.max(m, toNum(c.clientNo)), 0);
@@ -333,6 +369,7 @@ export default function App() {
             <div className="ps-header__sync">
               {connError ? <><WifiOff size={13} /> нет связи с базой</> : <><RefreshCw size={13} className={syncing ? "ps-spin" : ""} />{syncing ? "сохранение…" : lastSync ? `синхронизировано ${timeAgo(lastSync)}` : "…"}</>}
             </div>
+            <button className="ps-btn" onClick={() => setPricesModalOpen(true)}><Tag size={14} /> Цены</button>
             <button className="ps-btn ps-header__sell" onClick={() => setSellModal({ clientId: null })}><ShoppingCart size={14} /> Продать</button>
             <button className="ps-btn ps-header__logout" onClick={() => supabase.auth.signOut()}><LogOut size={14} /> Выйти</button>
           </header>
@@ -359,8 +396,11 @@ export default function App() {
       {sellModal && (
         <SellModal
           clients={clients} managerName={managerName} presetClientId={sellModal.clientId} sale={sellModal.sale}
-          onClose={() => setSellModal(null)}
+          prices={prices} onClose={() => setSellModal(null)}
         />
+      )}
+      {pricesModalOpen && (
+        <PricesModal prices={prices} onUpdate={updatePrice} onClose={() => setPricesModalOpen(false)} />
       )}
     </div>
   );
@@ -479,6 +519,11 @@ function GlobalStyle() {
       .ps-field input, .ps-field textarea, .ps-field select { border:1px solid var(--line); border-radius:9px; padding:9px 11px; font-size:13.5px; font-family: var(--font-body); color: var(--ink); resize: vertical; background: var(--panel); }
       .ps-field input:focus, .ps-field textarea:focus, .ps-field select:focus { outline:2px solid var(--petrol-2); outline-offset:1px; }
       .ps-sell-sum { font-family: var(--font-mono); font-size:20px; font-weight:600; color: var(--petrol); padding:8px 0; }
+      .ps-sell-sum__breakdown { font-size:11.5px; color:#8A94A0; margin-top:-4px; }
+      .ps-price-row { border:1px solid var(--line); border-radius:12px; padding:12px 14px; background: var(--panel); display:flex; flex-direction:column; gap:8px; }
+      .ps-price-row__fuel { font-family: var(--font-display); font-weight:600; font-size:13.5px; color: var(--petrol); }
+      .ps-price-row__grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+      .ps-price-row__meta { font-size:11px; color:#AEB6BD; }
       .ps-period-summary { display:flex; align-items:center; gap:14px; margin:0 22px 16px; padding:14px 20px; background: var(--ink); color:#fff; border-radius:14px; }
       .ps-period-summary__label { font-family: var(--font-display); font-weight:600; font-size:13px; opacity:0.7; }
       .ps-period-summary__stat { font-size:13.5px; opacity:0.9; }
@@ -504,6 +549,7 @@ function GlobalStyle() {
       .ps-history__row--clickable { width:100%; text-align:left; border:none; background:transparent; font-family: var(--font-body); color: var(--ink); cursor:pointer; border-radius:6px; }
       .ps-history__row--clickable:hover { background:#F0F4F7; }
       .ps-history__fuel { font-weight:600; color: var(--petrol-2); }
+      .ps-tara-badge { font-weight:400; color:#8A94A0; font-size:11px; }
       .ps-history__sum { font-family: var(--font-mono); text-align:right; }
 
       .ps-leadrow { border:1px solid var(--line); border-radius:12px; padding:10px 12px; background: var(--panel); display:flex; flex-direction:column; gap:6px; }

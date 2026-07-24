@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { Plus, Search, X, ShoppingCart, Download, CalendarRange } from "lucide-react";
 import * as XLSX from "xlsx";
 import { fmtInt, toNum, colorForName, todayStr } from "./utils.js";
-import { FUELS } from "./shared.jsx";
+import { FUELS, CONTAINER_LABELS } from "./shared.jsx";
 
 const WEEKDAYS = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
 const MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
@@ -87,9 +87,13 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
   }, [filtered]);
 
   const exportExcel = () => {
-    const headers = ["Дата", "Клиент", "Топливо", "Цена, ₽/л", "Объём, л", "Сумма, ₽", "Менеджер", "Комментарий"];
-    const body = filtered.map((s) => [s.saleDate, s.clientName, s.fuel, toNum(s.price), toNum(s.volume), toNum(s.sum), s.createdBy, s.comment]);
-    body.push(["", "", "", "", "", grandTotal, "", "ИТОГО"]);
+    const headers = ["Дата", "Клиент", "Топливо", "Цена, ₽/л", "Объём, л", "Тара", "Цена тары, ₽", "Залог, ₽", "Сумма, ₽", "Менеджер", "Комментарий"];
+    const body = filtered.map((s) => [
+      s.saleDate, s.clientName, s.fuel, toNum(s.price), toNum(s.volume),
+      s.containerMode ? CONTAINER_LABELS[s.containerMode] : "", toNum(s.containerPrice) || "", toNum(s.containerDeposit) || "",
+      toNum(s.sum), s.createdBy, s.comment,
+    ]);
+    body.push(["", "", "", "", "", "", "", "", grandTotal, "", "ИТОГО"]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...body]);
     ws["!cols"] = headers.map(() => ({ wch: 18 }));
     const wb = XLSX.utils.book_new();
@@ -154,7 +158,10 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
                 {entries.map((s) => (
                   <button key={s.id} type="button" className="ps-journal__entry" onClick={() => onOpenSell(s.clientId, s)}>
                     <span className="ps-journal__client">{s.clientName}</span>
-                    <span className="ps-history__fuel">{s.fuel || "—"}</span>
+                    <span className="ps-history__fuel">
+                      {s.fuel || "—"}
+                      {s.containerMode && <span className="ps-tara-badge"> · {CONTAINER_LABELS[s.containerMode]}</span>}
+                    </span>
                     <span className="ps-journal__vol">{fmtInt(toNum(s.volume))} л</span>
                     <span className="ps-journal__payment">{s.paymentMethod || "—"}</span>
                     <span className="ps-journal__sum">{fmtInt(toNum(s.sum))} ₽</span>

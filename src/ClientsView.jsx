@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { genId, toNum, fmtInt, colorForName } from "./utils.js";
-import { FUELS, STATUSES, Cell, FuelGauge } from "./shared.jsx";
+import { FUELS, STATUSES, Cell, FuelGauge, CONTAINER_LABELS } from "./shared.jsx";
 
 const emptyClient = (managerName) => ({
   id: null, clientNo: null, company: "", contactName: "", phone: "", source: "",
@@ -304,7 +304,10 @@ export default function ClientsView({
                   {(salesByClient.get(draft.id) || []).length === 0 && <div className="ps-history__empty">Пока нет оформленных продаж.</div>}
                   {(salesByClient.get(draft.id) || []).map((s) => (
                     <button key={s.id} type="button" className="ps-history__row ps-history__row--clickable" onClick={() => onSell(draft.id, s)}>
-                      <span className="ps-history__fuel">{s.fuel || "—"}</span>
+                      <span className="ps-history__fuel">
+                        {s.fuel || "—"}
+                        {s.containerMode && <span className="ps-tara-badge"> · {CONTAINER_LABELS[s.containerMode]}</span>}
+                      </span>
                       <span>{s.saleDate}</span>
                       <span>{fmtInt(toNum(s.volume))} л</span>
                       <span className="ps-history__sum">{fmtInt(toNum(s.sum))} ₽</span>

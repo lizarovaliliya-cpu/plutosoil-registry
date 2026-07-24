@@ -4,6 +4,8 @@ import { fmtInt, fmtT } from "./utils.js";
 export const FUELS = ["АИ-92", "АИ-95", "ДТ К5"];
 export const DENSITY = { "АИ-92": 0.745, "АИ-95": 0.75, "ДТ К5": 0.84 }; // кг/л, из исходного реестра
 
+export const CONTAINER_LABELS = { own: "своя тара", buy: "+ тара", rent: "аренда тары" };
+
 export const STATUSES = [
   { value: "", label: "Новый", color: "#7A8794", bg: "#EEF1F4" },
   { value: "КП отправлено", label: "КП отправлено", color: "#175983", bg: "#DCEAF3" },

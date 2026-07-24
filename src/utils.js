@@ -42,12 +42,22 @@ export const fromDbSale = (s) => ({
   sum: s.sum ?? "", saleDate: s.sale_date || "", paymentMethod: s.payment_method || "",
   comment: s.comment || "", createdBy: s.created_by || "",
   createdAt: s.created_at ? new Date(s.created_at).getTime() : 0,
+  containerMode: s.container_mode || "", containerPrice: s.container_price ?? "",
+  containerDeposit: s.container_deposit ?? "",
 });
 
 export const toDbSale = (s) => ({
   client_id: s.clientId, fuel: s.fuel, price: toNum(s.price), volume: toNum(s.volume),
   sum: toNum(s.sum), sale_date: s.saleDate, payment_method: s.paymentMethod,
   comment: s.comment, created_by: s.createdBy,
+  container_mode: s.containerMode || "",
+  container_price: s.containerPrice === "" ? null : toNum(s.containerPrice),
+  container_deposit: s.containerDeposit === "" ? null : toNum(s.containerDeposit),
+});
+
+export const fromDbPrice = (p) => ({
+  fuel: p.fuel, priceCash: p.price_cash ?? "", priceCashless: p.price_cashless ?? "",
+  updatedBy: p.updated_by || "", updatedAt: p.updated_at ? new Date(p.updated_at).getTime() : 0,
 });
 
 export function timeAgo(ts) {

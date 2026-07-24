@@ -157,3 +157,43 @@ drop policy if exists "authenticated delete" on sales;
 create policy "authenticated delete" on sales for delete to authenticated using (true);
 
 alter publication supabase_realtime add table sales;
+
+-- ============================================================
+-- Тара (этап 4): при продаже клиент может привезти свою тару,
+-- купить тару у нас или взять в аренду под залог. Залог просто
+-- фиксируется суммой (без отдельного трекинга возврата) — это
+-- не часть выручки (sum), а отдельная учётная сумма.
+-- ============================================================
+alter table sales add column if not exists container_mode text default '';
+alter table sales add column if not exists container_price numeric;
+alter table sales add column if not exists container_deposit numeric;
+
+-- ============================================================
+-- Текущие цены на топливо (этап 4): отдельная цена для наличной
+-- и безналичной оплаты на каждый вид топлива. Обновляется вручную
+-- менеджерами по мере изменения цен и автоматически подставляется
+-- в форму продажи.
+-- ============================================================
+create table if not exists fuel_prices (
+  fuel text primary key,
+  price_cash numeric,
+  price_cashless numeric,
+  updated_by text default '',
+  updated_at timestamptz default now()
+);
+
+alter table fuel_prices enable row level security;
+
+drop policy if exists "authenticated read" on fuel_prices;
+create policy "authenticated read" on fuel_prices for select to authenticated using (true);
+
+drop policy if exists "authenticated insert" on fuel_prices;
+create policy "authenticated insert" on fuel_prices for insert to authenticated with check (true);
+
+drop policy if exists "authenticated update" on fuel_prices;
+create policy "authenticated update" on fuel_prices for update to authenticated using (true);
+
+alter publication supabase_realtime add table fuel_prices;
+
+insert into fuel_prices (fuel) values ('АИ-92'), ('АИ-95'), ('ДТ К5')
+on conflict (fuel) do nothing;
