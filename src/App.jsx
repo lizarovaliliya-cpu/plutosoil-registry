@@ -311,20 +311,25 @@ export default function App() {
     const byFuel = {};
     FUELS.forEach((f) => (byFuel[f] = { count: 0, weekly: 0, purchased: 0, sum: 0 }));
     const clientSet = new Set();
-    let totalSum = 0, totalPurchased = 0;
     rows.forEach((r) => {
       clientSet.add(`${r.no}|${r.name}`);
-      totalSum += toNum(r.purchaseSum);
-      totalPurchased += toNum(r.purchased);
       if (byFuel[r.fuel]) {
         byFuel[r.fuel].count++;
         byFuel[r.fuel].weekly += toNum(r.weeklyNeed);
-        byFuel[r.fuel].purchased += toNum(r.purchased);
-        byFuel[r.fuel].sum += toNum(r.purchaseSum);
+      }
+    });
+    let totalSum = 0, totalPurchased = 0;
+    sales.forEach((s) => {
+      const vol = toNum(s.volume), sum = toNum(s.sum);
+      totalSum += sum;
+      totalPurchased += vol;
+      if (byFuel[s.fuel]) {
+        byFuel[s.fuel].purchased += vol;
+        byFuel[s.fuel].sum += sum;
       }
     });
     return { byFuel, totalClients: clientSet.size, totalSum, totalPurchased, totalRows: rows.length };
-  }, [rows]);
+  }, [rows, sales]);
 
   const managers = useMemo(() => {
     const set = new Set([
