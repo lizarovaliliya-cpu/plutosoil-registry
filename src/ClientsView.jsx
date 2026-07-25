@@ -72,7 +72,7 @@ export default function ClientsView({
       ...clients.map((c) => c.createdBy),
       ...sales.map((s) => s.createdBy),
       ...rows.map((r) => r.updatedBy),
-    ].filter(Boolean));
+    ].filter((v) => v && v !== "система"));
     if (managerName) set.add(managerName);
     return [...set].sort((a, b) => a.localeCompare(b, "ru"));
   }, [clients, sales, rows, managerName]);
