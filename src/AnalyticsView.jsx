@@ -62,6 +62,7 @@ export default function AnalyticsView({ sales, clients, rows }) {
   const totalSum = filteredSales.reduce((a, s) => a + toNum(s.sum), 0);
   const dealsCount = filteredSales.length;
   const avgCheck = dealsCount ? totalSum / dealsCount : 0;
+  const agentFeeTotal = filteredSales.reduce((a, s) => a + toNum(s.agentFee), 0);
 
   const newClientsCount = useMemo(
     () => clients.filter((c) => c.createdAt && inRange(isoOf(new Date(c.createdAt)))).length,
@@ -170,6 +171,10 @@ export default function AnalyticsView({ sales, clients, rows }) {
         <div className="ps-kpi-card">
           <div className="ps-kpi-card__label">Новых клиентов {periodLabel}</div>
           <div className="ps-kpi-card__value">{newClientsCount}</div>
+        </div>
+        <div className="ps-kpi-card">
+          <div className="ps-kpi-card__label">Агентское вознаграждение {periodLabel}</div>
+          <div className="ps-kpi-card__value">{fmtInt(agentFeeTotal)} ₽</div>
         </div>
       </div>
 

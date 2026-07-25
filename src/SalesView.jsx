@@ -74,6 +74,7 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
   const grandTotal = filtered.reduce((a, s) => a + toNum(s.sum), 0);
   const unshipped = useMemo(() => filtered.filter((s) => !s.shipped), [filtered]);
   const unshippedSum = unshipped.reduce((a, s) => a + toNum(s.sum), 0);
+  const agentFeeTotal = filtered.reduce((a, s) => a + toNum(s.agentFee), 0);
 
   const periodLabel = period === "all" ? "За всё время"
     : period === "today" ? "За сегодня"
@@ -91,13 +92,13 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
   }, [filtered]);
 
   const exportExcel = () => {
-    const headers = ["Дата", "Клиент", "Топливо", "Цена, ₽/л", "Объём, л", "Тара", "Кол-во тары, шт", "Цена тары, ₽", "Залог, ₽", "Сумма, ₽", "Отгружено", "Дата отгрузки", "Менеджер", "Комментарий"];
+    const headers = ["Дата", "Клиент", "Топливо", "Цена, ₽/л", "Объём, л", "Тара", "Кол-во тары, шт", "Цена тары, ₽", "Залог, ₽", "Сумма, ₽", "Агентское вознаграждение, ₽", "Отгружено", "Дата отгрузки", "Менеджер", "Комментарий"];
     const body = filtered.map((s) => [
       s.saleDate, s.clientName, s.fuel, toNum(s.price), toNum(s.volume),
       s.containerMode ? CONTAINER_LABELS[s.containerMode] : "", toNum(s.containerQty) || "", toNum(s.containerPrice) || "", toNum(s.containerDeposit) || "",
-      toNum(s.sum), s.shipped ? "Да" : "Нет", s.shippedDate || "", s.createdBy, s.comment,
+      toNum(s.sum), toNum(s.agentFee) || "", s.shipped ? "Да" : "Нет", s.shippedDate || "", s.createdBy, s.comment,
     ]);
-    body.push(["", "", "", "", "", "", "", "", "", grandTotal, "", "", "", "ИТОГО"]);
+    body.push(["", "", "", "", "", "", "", "", "", grandTotal, agentFeeTotal || "", "", "", "", "ИТОГО"]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...body]);
     ws["!cols"] = headers.map(() => ({ wch: 18 }));
     const wb = XLSX.utils.book_new();
@@ -154,6 +155,12 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
             <span className="ps-period-summary__stat ps-period-summary__stat--warn"><b>{unshipped.length}</b> не отгружено ({fmtInt(unshippedSum)} ₽)</span>
           </>
         )}
+        {agentFeeTotal > 0 && (
+          <>
+            <span className="ps-period-summary__divider" />
+            <span className="ps-period-summary__stat">агентское вознаграждение <b>{fmtInt(agentFeeTotal)}</b> ₽</span>
+          </>
+        )}
       </div>
 
       <div className="ps-journal">
@@ -175,7 +182,10 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
                     </span>
                     <span className="ps-journal__vol">{fmtInt(toNum(s.volume))} л</span>
                     <span className="ps-journal__payment">{s.paymentMethod || "—"}</span>
-                    <span className="ps-journal__sum">{fmtInt(toNum(s.sum))} ₽</span>
+                    <span className="ps-journal__sum">
+                      {fmtInt(toNum(s.sum))} ₽
+                      {toNum(s.agentFee) > 0 && <span className="ps-tara-badge"> · агент {fmtInt(toNum(s.agentFee))}</span>}
+                    </span>
                     <span>
                       {s.shipped
                         ? <span className="ps-ship-badge ps-ship-badge--done">Отгружено{s.shippedDate ? " " + shortDate(s.shippedDate) : ""}</span>

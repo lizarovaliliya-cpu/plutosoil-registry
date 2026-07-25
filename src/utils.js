@@ -45,6 +45,7 @@ export const fromDbSale = (s) => ({
   containerMode: s.container_mode || "", containerPrice: s.container_price ?? "",
   containerDeposit: s.container_deposit ?? "", containerQty: s.container_qty ?? "",
   shipped: !!s.shipped, shippedDate: s.shipped_date || "",
+  agentFee: s.agent_fee ?? "",
 });
 
 export const toDbSale = (s) => ({
@@ -56,6 +57,7 @@ export const toDbSale = (s) => ({
   container_deposit: s.containerDeposit === "" ? null : toNum(s.containerDeposit),
   container_qty: s.containerQty === "" ? null : toNum(s.containerQty),
   shipped: !!s.shipped, shipped_date: s.shipped ? (s.shippedDate || null) : null,
+  agent_fee: s.agentFee === "" ? null : toNum(s.agentFee),
 });
 
 export const fromDbPrice = (p) => ({

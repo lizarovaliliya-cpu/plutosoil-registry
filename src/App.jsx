@@ -591,7 +591,7 @@ function GlobalStyle() {
       .ps-journal__manager { text-align:right; font-size:12px; }
       @media (max-width: 900px) { .ps-dash { grid-template-columns: 1fr 1fr; } }
 
-      .ps-kpi-grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; padding:0 22px 16px; }
+      .ps-kpi-grid { display:grid; grid-template-columns: repeat(5, 1fr); gap:12px; padding:0 22px 16px; }
       .ps-kpi-card { background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; }
       .ps-kpi-card__label { font-size:12px; color:#8A94A0; margin-bottom:8px; }
       .ps-kpi-card__value { font-family: var(--font-display); font-size:22px; font-weight:700; color: var(--petrol); }

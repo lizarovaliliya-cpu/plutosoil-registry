@@ -40,6 +40,7 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
   const [containerQty, setContainerQty] = useState(sale?.containerQty || "1");
   const [shipped, setShipped] = useState(sale?.shipped || false);
   const [shippedDate, setShippedDate] = useState(sale?.shippedDate || "");
+  const [agentFee, setAgentFee] = useState(sale?.agentFee ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -72,7 +73,7 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
       clientId, fuel, price, volume, sum, saleDate, paymentMethod, comment,
       containerMode, containerPrice, containerDeposit,
       containerQty: containerMode === "buy" || containerMode === "rent" ? containerQty : "",
-      shipped, shippedDate,
+      shipped, shippedDate, agentFee,
       createdBy: sale?.createdBy || managerName || "Гость",
     });
     const { error: err } = isEdit
@@ -235,6 +236,10 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
               </label>
             </>
           )}
+          <label className="ps-field">
+            <span>Агентское вознаграждение, ₽</span>
+            <input type="number" min="0" step="1" value={agentFee} onChange={(e) => setAgentFee(e.target.value)} placeholder="0" />
+          </label>
           <div className="ps-field">
             <span>Сумма</span>
             <div className="ps-sell-sum">{fmtInt(sum)} ₽</div>
@@ -243,6 +248,9 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
             )}
             {containerMode === "rent" && depositSum > 0 && (
               <div className="ps-sell-sum__breakdown">+ залог {fmtInt(depositSum)} ₽ ({qty} шт, не входит в выручку)</div>
+            )}
+            {toNum(agentFee) > 0 && (
+              <div className="ps-sell-sum__breakdown">− агентское вознаграждение {fmtInt(toNum(agentFee))} ₽ (не входит в выручку)</div>
             )}
           </div>
           <label className="ps-field">

@@ -299,7 +299,10 @@ export default function ClientsView({
                       </span>
                       <span>{s.saleDate}</span>
                       <span>{fmtInt(toNum(s.volume))} л</span>
-                      <span className="ps-history__sum">{fmtInt(toNum(s.sum))} ₽</span>
+                      <span className="ps-history__sum">
+                        {fmtInt(toNum(s.sum))} ₽
+                        {toNum(s.agentFee) > 0 && <span className="ps-tara-badge"> · агент {fmtInt(toNum(s.agentFee))}</span>}
+                      </span>
                       <span>
                         {s.shipped
                           ? <span className="ps-ship-badge ps-ship-badge--done">Отгружено</span>
