@@ -15,7 +15,7 @@ const emptyClient = (managerName) => ({
 });
 
 export default function ClientsView({
-  clients, loaded, rows, sales, managerName, summary,
+  clients, loaded, rows, sales, managerName, summary, managers,
   onCreate, onUpdate, onDelete, onSell,
   onCommitField, onRemoveRow, onActualize, onAddDeal, onExportExcel,
 }) {
@@ -65,17 +65,6 @@ export default function ClientsView({
     const sum = hist.reduce((a, r) => a + toNum(r.purchaseSum), 0) + sold.reduce((a, s) => a + toNum(s.sum), 0);
     return { leads: hist.length, deals: sold.length, sum };
   };
-
-  const managers = useMemo(() => {
-    const set = new Set([
-      ...clients.map((c) => c.assignedTo),
-      ...clients.map((c) => c.createdBy),
-      ...sales.map((s) => s.createdBy),
-      ...rows.map((r) => r.updatedBy),
-    ].filter((v) => v && v !== "система"));
-    if (managerName) set.add(managerName);
-    return [...set].sort((a, b) => a.localeCompare(b, "ru"));
-  }, [clients, sales, rows, managerName]);
 
   const filtered = useMemo(() => {
     let out = clients;

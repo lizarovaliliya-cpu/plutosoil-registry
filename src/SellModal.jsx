@@ -19,9 +19,10 @@ const isoToday = () => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
-export default function SellModal({ clients, managerName, presetClientId, sale, prices, companyProfile, onCreateClient, onClose }) {
+export default function SellModal({ clients, managerName, managers, presetClientId, sale, prices, companyProfile, onCreateClient, onClose }) {
   const sortedClients = useMemo(() => [...clients].sort((a, b) => a.company.localeCompare(b.company, "ru")), [clients]);
   const [clientId, setClientId] = useState(sale?.clientId || presetClientId || (sortedClients[0]?.id ?? ""));
+  const [createdBy, setCreatedBy] = useState(sale?.createdBy || managerName || "");
   const [newClientMode, setNewClientMode] = useState(false);
   const [newCompany, setNewCompany] = useState("");
   const [newContact, setNewContact] = useState("");
@@ -75,7 +76,7 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
       containerMode, containerPrice, containerDeposit,
       containerQty: containerMode === "buy" || containerMode === "rent" ? containerQty : "",
       shipped, shippedDate, agentFee,
-      createdBy: sale?.createdBy || managerName || "Гость",
+      createdBy: createdBy || managerName || "Гость",
     });
     const { error: err } = isEdit
       ? await supabase.from("sales").update(payload).eq("id", sale.id)
@@ -107,7 +108,7 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
     const created = await onCreateClient({
       company: newCompany.trim(), contactName: newContact.trim(), phone: newPhone.trim(),
       source: newSource, inn: "", kpp: "", ogrn: "", legalAddress: "", bankDetails: "", comment: "",
-      fileUrl: "", fileName: "", assignedTo: managerName || "",
+      fileUrl: "", fileName: "", assignedTo: createdBy || managerName || "",
     });
     setCreatingClient(false);
     if (created) {
@@ -189,6 +190,14 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
               </div>
             )}
           </div>
+          <label className="ps-field">
+            <span>Менеджер</span>
+            <select value={createdBy} onChange={(e) => setCreatedBy(e.target.value)}>
+              <option value="">Не указан</option>
+              {createdBy && !(managers || []).includes(createdBy) && <option value={createdBy}>{createdBy}</option>}
+              {(managers || []).map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </label>
           <label className="ps-field">
             <span>Вид топлива</span>
             <select value={fuel} onChange={(e) => setFuel(e.target.value)}>

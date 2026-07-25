@@ -326,6 +326,17 @@ export default function App() {
     return { byFuel, totalClients: clientSet.size, totalSum, totalPurchased, totalRows: rows.length };
   }, [rows]);
 
+  const managers = useMemo(() => {
+    const set = new Set([
+      ...clients.map((c) => c.assignedTo),
+      ...clients.map((c) => c.createdBy),
+      ...sales.map((s) => s.createdBy),
+      ...rows.map((r) => r.updatedBy),
+    ].filter((v) => v && v !== "система"));
+    if (managerName) set.add(managerName);
+    return [...set].sort((a, b) => a.localeCompare(b, "ru"));
+  }, [clients, sales, rows, managerName]);
+
   const exportExcel = () => {
     const headers = ["№", "Наименование", "Контактное лицо", "Источник", "Номер телефона", "Вид топлива",
       "Недельная потребность, л", "Дата актуализации", "Статус", "Заявленная потребность (исх.)",
@@ -414,7 +425,7 @@ export default function App() {
           ) : (
             <ClientsView
               clients={clients} loaded={clientsLoaded} rows={rows} sales={sales} managerName={managerName}
-              summary={summary}
+              summary={summary} managers={managers}
               onCreate={createClient} onUpdate={updateClient} onDelete={deleteClient}
               onSell={(clientId, sale) => setSellModal({ clientId, sale })}
               onCommitField={commitField} onRemoveRow={removeRow} onActualize={actualize}
@@ -425,7 +436,7 @@ export default function App() {
       </div>
       {sellModal && (
         <SellModal
-          clients={clients} managerName={managerName} presetClientId={sellModal.clientId} sale={sellModal.sale}
+          clients={clients} managerName={managerName} managers={managers} presetClientId={sellModal.clientId} sale={sellModal.sale}
           prices={prices} companyProfile={companyProfile} onCreateClient={createClient} onClose={() => setSellModal(null)}
         />
       )}
