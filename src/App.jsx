@@ -5,16 +5,18 @@ import { supabase } from "./supabaseClient.js";
 import { SEED_DATA } from "./seedData.js";
 import {
   genId, todayStr, toNum, fmtInt, timeAgo, colorForName,
-  fromDbClient, toDbClient, fromDbSale, fromDbPrice, fromDbCompanyProfile,
+  fromDbClient, toDbClient, fromDbSale, fromDbPrice, fromDbCompanyProfile, fromDbReceipt,
 } from "./utils.js";
 import { FUELS, DENSITY } from "./shared.jsx";
 import Sidebar from "./Sidebar.jsx";
 import ClientsView from "./ClientsView.jsx";
 import SalesView from "./SalesView.jsx";
 import AnalyticsView from "./AnalyticsView.jsx";
+import StockView from "./StockView.jsx";
 import SellModal from "./SellModal.jsx";
 import PricesModal from "./PricesModal.jsx";
 import CompanyProfileModal from "./CompanyProfileModal.jsx";
+import StockReceiptModal from "./StockReceiptModal.jsx";
 
 /* ============================================================
    PlutosOil — Реестр покупателей топлива
@@ -62,9 +64,12 @@ export default function App() {
   const [salesLoaded, setSalesLoaded] = useState(false);
   const [prices, setPrices] = useState([]);
   const [companyProfile, setCompanyProfile] = useState({});
+  const [receipts, setReceipts] = useState([]);
+  const [receiptsLoaded, setReceiptsLoaded] = useState(false);
   const [sellModal, setSellModal] = useState(null); // { clientId } | null
   const [pricesModalOpen, setPricesModalOpen] = useState(false);
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
+  const [receiptModal, setReceiptModal] = useState(null); // { receipt } | null, only when open
   const [, forceTick] = useState(0);
   const presenceChannelRef = useRef(null);
 
@@ -162,6 +167,28 @@ export default function App() {
             const incoming = fromDbSale(payload.new);
             const exists = prev.some((s) => s.id === incoming.id);
             return exists ? prev.map((s) => (s.id === incoming.id ? incoming : s)) : [incoming, ...prev];
+          });
+        })
+        .subscribe();
+    })();
+    return () => { if (channel) supabase.removeChannel(channel); };
+  }, [session]);
+
+  /* ---- склад (приход топлива): загрузка + realtime ---- */
+  useEffect(() => {
+    if (!session) { setReceipts([]); setReceiptsLoaded(false); return; }
+    let channel;
+    (async () => {
+      const { data } = await supabase.from("stock_receipts").select("*").order("receipt_date", { ascending: false });
+      setReceipts((data || []).map(fromDbReceipt));
+      setReceiptsLoaded(true);
+      channel = supabase.channel("stock-receipts-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "stock_receipts" }, (payload) => {
+          setReceipts((prev) => {
+            if (payload.eventType === "DELETE") return prev.filter((r) => r.id !== payload.old.id);
+            const incoming = fromDbReceipt(payload.new);
+            const exists = prev.some((r) => r.id === incoming.id);
+            return exists ? prev.map((r) => (r.id === incoming.id ? incoming : r)) : [incoming, ...prev];
           });
         })
         .subscribe();
@@ -403,7 +430,7 @@ export default function App() {
         <Sidebar view={view} setView={setView} />
         <div className="ps-main">
           <header className="ps-header">
-            <div className="ps-header__brand"><Fuel size={20} /><span>PlutosOil</span><span className="ps-header__sub">{{ clients: "Клиенты", sales: "Реестр сделок", analytics: "Аналитика" }[view]}</span></div>
+            <div className="ps-header__brand"><Fuel size={20} /><span>PlutosOil</span><span className="ps-header__sub">{{ clients: "Клиенты", sales: "Реестр сделок", stock: "Склад", analytics: "Аналитика" }[view]}</span></div>
             <div className="ps-header__presence">
               <Users size={14} />
               <div className="ps-avatars">
@@ -424,6 +451,11 @@ export default function App() {
             <SalesView
               sales={sales} salesLoaded={salesLoaded} clients={clients} managerName={managerName}
               onOpenSell={(clientId, sale) => setSellModal({ clientId, sale })}
+            />
+          ) : view === "stock" ? (
+            <StockView
+              receipts={receipts} receiptsLoaded={receiptsLoaded} sales={sales} managerName={managerName}
+              onOpenReceipt={(receipt) => setReceiptModal({ receipt })}
             />
           ) : view === "analytics" ? (
             <AnalyticsView sales={sales} clients={clients} rows={rows} />
@@ -450,6 +482,12 @@ export default function App() {
       )}
       {companyModalOpen && (
         <CompanyProfileModal companyProfile={companyProfile} onUpdate={updateCompanyProfile} onClose={() => setCompanyModalOpen(false)} />
+      )}
+      {receiptModal && (
+        <StockReceiptModal
+          receipt={receiptModal.receipt} managerName={managerName} managers={managers}
+          onClose={() => setReceiptModal(null)}
+        />
       )}
     </div>
   );

@@ -65,6 +65,18 @@ export const fromDbPrice = (p) => ({
   updatedBy: p.updated_by || "", updatedAt: p.updated_at ? new Date(p.updated_at).getTime() : 0,
 });
 
+export const fromDbReceipt = (r) => ({
+  id: r.id, fuel: r.fuel || "", volume: r.volume ?? "", price: r.price ?? "", sum: r.sum ?? "",
+  supplier: r.supplier || "", receiptDate: r.receipt_date || "", comment: r.comment || "",
+  createdBy: r.created_by || "", createdAt: r.created_at ? new Date(r.created_at).getTime() : 0,
+});
+
+export const toDbReceipt = (r) => ({
+  fuel: r.fuel, volume: toNum(r.volume), price: r.price === "" ? null : toNum(r.price),
+  sum: toNum(r.sum), supplier: r.supplier, receipt_date: r.receiptDate,
+  comment: r.comment, created_by: r.createdBy,
+});
+
 export const fromDbCompanyProfile = (p) => ({
   name: p.name || "", inn: p.inn || "", kpp: p.kpp || "", address: p.address || "",
   releasedBy: p.released_by || "",

@@ -1,9 +1,10 @@
 import React from "react";
-import { Fuel, Building2, CalendarDays, BarChart3 } from "lucide-react";
+import { Fuel, Building2, CalendarDays, BarChart3, Warehouse } from "lucide-react";
 
 const ITEMS = [
   { key: "clients", label: "Клиенты", icon: Building2 },
   { key: "sales", label: "Реестр сделок", icon: CalendarDays },
+  { key: "stock", label: "Склад", icon: Warehouse },
   { key: "analytics", label: "Аналитика", icon: BarChart3 },
 ];
 

@@ -214,6 +214,39 @@ alter publication supabase_realtime add table company_profile;
 insert into company_profile (id) values ('default') on conflict (id) do nothing;
 
 -- ============================================================
+-- Склад (этап 8): приход топлива, чтобы считать актуальный
+-- остаток = сумма прихода − сумма проданного (sales.volume).
+-- ============================================================
+create table if not exists stock_receipts (
+  id uuid primary key default gen_random_uuid(),
+  fuel text default '',
+  volume numeric,
+  price numeric,
+  sum numeric,
+  supplier text default '',
+  receipt_date date default current_date,
+  comment text default '',
+  created_by text default '',
+  created_at timestamptz default now()
+);
+
+alter table stock_receipts enable row level security;
+
+drop policy if exists "authenticated read" on stock_receipts;
+create policy "authenticated read" on stock_receipts for select to authenticated using (true);
+
+drop policy if exists "authenticated insert" on stock_receipts;
+create policy "authenticated insert" on stock_receipts for insert to authenticated with check (true);
+
+drop policy if exists "authenticated update" on stock_receipts;
+create policy "authenticated update" on stock_receipts for update to authenticated using (true);
+
+drop policy if exists "authenticated delete" on stock_receipts;
+create policy "authenticated delete" on stock_receipts for delete to authenticated using (true);
+
+alter publication supabase_realtime add table stock_receipts;
+
+-- ============================================================
 -- Текущие цены на топливо (этап 4): отдельная цена для наличной
 -- и безналичной оплаты на каждый вид топлива. Обновляется вручную
 -- менеджерами по мере изменения цен и автоматически подставляется
