@@ -59,14 +59,11 @@ function invoiceCopy(sale, client, company, docNo, dateStr, copyLabel) {
   </div>`;
 }
 
-export function printInvoice(sale, client, company) {
-  const win = window.open("", "_blank", "width=900,height=1200");
-  if (!win) { alert("Разрешите всплывающие окна в браузере, чтобы напечатать накладную"); return; }
-
+function buildInvoiceHtml(sale, client, company) {
   const docNo = (sale.id || "").replace(/-/g, "").slice(-8).toUpperCase() || "б/н";
   const dateStr = sale.saleDate ? new Date(sale.saleDate + "T00:00:00").toLocaleDateString("ru-RU") : "";
 
-  const html = `<!doctype html>
+  return `<!doctype html>
 <html><head><meta charset="utf-8"><title>Накладная ${docNo}</title>
 <style>
   @page { size: A4; margin: 10mm; }
@@ -95,9 +92,30 @@ export function printInvoice(sale, client, company) {
   <div class="cut"><span>линия отреза</span></div>
   ${invoiceCopy(sale, client, company, docNo, dateStr, "Экземпляр 2 — Покупатель")}
 </body></html>`;
+}
 
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  setTimeout(() => { try { win.focus(); win.print(); } catch (e) { /* noop */ } }, 250);
+export function printInvoice(sale, client, company) {
+  const html = buildInvoiceHtml(sale, client, company);
+
+  let iframe = document.getElementById("ps-print-frame");
+  if (!iframe) {
+    iframe = document.createElement("iframe");
+    iframe.id = "ps-print-frame";
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+  }
+
+  const doc = iframe.contentWindow.document;
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  requestAnimationFrame(() => {
+    try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) { /* noop */ }
+  });
 }
