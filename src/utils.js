@@ -65,6 +65,12 @@ export const fromDbPrice = (p) => ({
   updatedBy: p.updated_by || "", updatedAt: p.updated_at ? new Date(p.updated_at).getTime() : 0,
 });
 
+export const fromDbCompanyProfile = (p) => ({
+  name: p.name || "", inn: p.inn || "", kpp: p.kpp || "", address: p.address || "",
+  releasedBy: p.released_by || "",
+  updatedBy: p.updated_by || "", updatedAt: p.updated_at ? new Date(p.updated_at).getTime() : 0,
+});
+
 export function timeAgo(ts) {
   if (!ts) return "";
   const s = Math.floor((Date.now() - ts) / 1000);

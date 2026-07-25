@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Users, RefreshCw, LogIn, LogOut, WifiOff, ShoppingCart, Fuel, Tag } from "lucide-react";
+import { Users, RefreshCw, LogIn, LogOut, WifiOff, ShoppingCart, Fuel, Tag, Building2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { supabase } from "./supabaseClient.js";
 import { SEED_DATA } from "./seedData.js";
 import {
   genId, todayStr, toNum, fmtInt, timeAgo, colorForName,
-  fromDbClient, toDbClient, fromDbSale, fromDbPrice,
+  fromDbClient, toDbClient, fromDbSale, fromDbPrice, fromDbCompanyProfile,
 } from "./utils.js";
 import { FUELS, DENSITY } from "./shared.jsx";
 import Sidebar from "./Sidebar.jsx";
@@ -14,6 +14,7 @@ import SalesView from "./SalesView.jsx";
 import AnalyticsView from "./AnalyticsView.jsx";
 import SellModal from "./SellModal.jsx";
 import PricesModal from "./PricesModal.jsx";
+import CompanyProfileModal from "./CompanyProfileModal.jsx";
 
 /* ============================================================
    PlutosOil — Реестр покупателей топлива
@@ -60,8 +61,10 @@ export default function App() {
   const [sales, setSales] = useState([]);
   const [salesLoaded, setSalesLoaded] = useState(false);
   const [prices, setPrices] = useState([]);
+  const [companyProfile, setCompanyProfile] = useState({});
   const [sellModal, setSellModal] = useState(null); // { clientId } | null
   const [pricesModalOpen, setPricesModalOpen] = useState(false);
+  const [companyModalOpen, setCompanyModalOpen] = useState(false);
   const [, forceTick] = useState(0);
   const presenceChannelRef = useRef(null);
 
@@ -197,6 +200,29 @@ export default function App() {
     });
     const dbField = field === "priceCash" ? "price_cash" : "price_cashless";
     await supabase.from("fuel_prices").upsert({ fuel, [dbField]: num, updated_by: updatedBy }, { onConflict: "fuel" });
+  };
+
+  /* ---- реквизиты компании (для накладной): загрузка + realtime ---- */
+  useEffect(() => {
+    if (!session) { setCompanyProfile({}); return; }
+    let channel;
+    (async () => {
+      const { data } = await supabase.from("company_profile").select("*").eq("id", "default").maybeSingle();
+      if (data) setCompanyProfile(fromDbCompanyProfile(data));
+      channel = supabase.channel("company-profile-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "company_profile" }, (payload) => {
+          if (payload.new) setCompanyProfile(fromDbCompanyProfile(payload.new));
+        })
+        .subscribe();
+    })();
+    return () => { if (channel) supabase.removeChannel(channel); };
+  }, [session]);
+
+  const updateCompanyProfile = async (field, value) => {
+    const updatedBy = managerName || "Гость";
+    const dbField = { name: "name", inn: "inn", kpp: "kpp", address: "address", releasedBy: "released_by" }[field];
+    setCompanyProfile((prev) => ({ ...prev, [field]: value, updatedBy, updatedAt: Date.now() }));
+    await supabase.from("company_profile").upsert({ id: "default", [dbField]: value, updated_by: updatedBy }, { onConflict: "id" });
   };
 
   const createClient = async (draft) => {
@@ -372,6 +398,7 @@ export default function App() {
             <div className="ps-header__sync">
               {connError ? <><WifiOff size={13} /> нет связи с базой</> : <><RefreshCw size={13} className={syncing ? "ps-spin" : ""} />{syncing ? "сохранение…" : lastSync ? `синхронизировано ${timeAgo(lastSync)}` : "…"}</>}
             </div>
+            <button className="ps-btn" onClick={() => setCompanyModalOpen(true)}><Building2 size={14} /> Реквизиты</button>
             <button className="ps-btn" onClick={() => setPricesModalOpen(true)}><Tag size={14} /> Цены</button>
             <button className="ps-btn ps-header__sell" onClick={() => setSellModal({ clientId: null })}><ShoppingCart size={14} /> Продать</button>
             <button className="ps-btn ps-header__logout" onClick={() => supabase.auth.signOut()}><LogOut size={14} /> Выйти</button>
@@ -399,11 +426,14 @@ export default function App() {
       {sellModal && (
         <SellModal
           clients={clients} managerName={managerName} presetClientId={sellModal.clientId} sale={sellModal.sale}
-          prices={prices} onCreateClient={createClient} onClose={() => setSellModal(null)}
+          prices={prices} companyProfile={companyProfile} onCreateClient={createClient} onClose={() => setSellModal(null)}
         />
       )}
       {pricesModalOpen && (
         <PricesModal prices={prices} onUpdate={updatePrice} onClose={() => setPricesModalOpen(false)} />
+      )}
+      {companyModalOpen && (
+        <CompanyProfileModal companyProfile={companyProfile} onUpdate={updateCompanyProfile} onClose={() => setCompanyModalOpen(false)} />
       )}
     </div>
   );

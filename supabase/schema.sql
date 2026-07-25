@@ -184,6 +184,36 @@ alter table sales add column if not exists shipped_date date;
 alter table sales add column if not exists agent_fee numeric;
 
 -- ============================================================
+-- Реквизиты компании (этап 7): наши данные как поставщика для
+-- печати накладной на выдачу — одна строка-настройка.
+-- ============================================================
+create table if not exists company_profile (
+  id text primary key default 'default',
+  name text default '',
+  inn text default '',
+  kpp text default '',
+  address text default '',
+  released_by text default '',
+  updated_by text default '',
+  updated_at timestamptz default now()
+);
+
+alter table company_profile enable row level security;
+
+drop policy if exists "authenticated read" on company_profile;
+create policy "authenticated read" on company_profile for select to authenticated using (true);
+
+drop policy if exists "authenticated insert" on company_profile;
+create policy "authenticated insert" on company_profile for insert to authenticated with check (true);
+
+drop policy if exists "authenticated update" on company_profile;
+create policy "authenticated update" on company_profile for update to authenticated using (true);
+
+alter publication supabase_realtime add table company_profile;
+
+insert into company_profile (id) values ('default') on conflict (id) do nothing;
+
+-- ============================================================
 -- Текущие цены на топливо (этап 4): отдельная цена для наличной
 -- и безналичной оплаты на каждый вид топлива. Обновляется вручную
 -- менеджерами по мере изменения цен и автоматически подставляется

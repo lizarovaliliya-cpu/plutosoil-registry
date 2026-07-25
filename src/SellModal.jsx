@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { X, ShoppingCart, Trash2, Plus } from "lucide-react";
+import { X, ShoppingCart, Trash2, Plus, Printer } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { toNum, fmtInt, toDbSale } from "./utils.js";
 import { FUELS, SuggestDropdown, SOURCES } from "./shared.jsx";
+import { printInvoice } from "./invoice.js";
 
 const PAYMENT_METHODS = ["Наличные", "Безналичный", "Карта"];
 const CONTAINER_MODES = [
@@ -18,7 +19,7 @@ const isoToday = () => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
-export default function SellModal({ clients, managerName, presetClientId, sale, prices, onCreateClient, onClose }) {
+export default function SellModal({ clients, managerName, presetClientId, sale, prices, companyProfile, onCreateClient, onClose }) {
   const sortedClients = useMemo(() => [...clients].sort((a, b) => a.company.localeCompare(b.company, "ru")), [clients]);
   const [clientId, setClientId] = useState(sale?.clientId || presetClientId || (sortedClients[0]?.id ?? ""));
   const [newClientMode, setNewClientMode] = useState(false);
@@ -122,6 +123,14 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
     setSaving(false);
     if (err) { setError(err.message); return; }
     onClose();
+  };
+
+  const handlePrint = () => {
+    const client = clients.find((c) => c.id === clientId);
+    printInvoice(
+      { id: sale?.id, fuel, price, volume, sum, saleDate, containerMode, containerPrice, containerDeposit, containerQty },
+      client, companyProfile || {}
+    );
   };
 
   return (
@@ -280,6 +289,11 @@ export default function SellModal({ clients, managerName, presetClientId, sale, 
           {isEdit && (
             <button type="button" className={`ps-btn ${deleteConfirm ? "ps-del--confirm" : ""}`} onClick={remove} disabled={saving}>
               <Trash2 size={14} /> {deleteConfirm ? "Точно удалить?" : "Удалить"}
+            </button>
+          )}
+          {isEdit && (
+            <button type="button" className="ps-btn" onClick={handlePrint}>
+              <Printer size={14} /> Накладная
             </button>
           )}
           <div className="ps-toolbar__spacer" />
