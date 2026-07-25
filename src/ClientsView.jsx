@@ -67,9 +67,15 @@ export default function ClientsView({
   };
 
   const managers = useMemo(() => {
-    const set = new Set(clients.map((c) => c.assignedTo).filter(Boolean));
+    const set = new Set([
+      ...clients.map((c) => c.assignedTo),
+      ...clients.map((c) => c.createdBy),
+      ...sales.map((s) => s.createdBy),
+      ...rows.map((r) => r.updatedBy),
+    ].filter(Boolean));
+    if (managerName) set.add(managerName);
     return [...set].sort((a, b) => a.localeCompare(b, "ru"));
-  }, [clients]);
+  }, [clients, sales, rows, managerName]);
 
   const filtered = useMemo(() => {
     let out = clients;
@@ -248,7 +254,11 @@ export default function ClientsView({
               </label>
               <label className="ps-field">
                 <span>Закреплён за менеджером</span>
-                <input value={draft.assignedTo} onChange={(e) => setDraft({ ...draft, assignedTo: e.target.value })} placeholder="Имя менеджера" />
+                <select value={draft.assignedTo} onChange={(e) => setDraft({ ...draft, assignedTo: e.target.value })}>
+                  <option value="">Не назначен</option>
+                  {draft.assignedTo && !managers.includes(draft.assignedTo) && <option value={draft.assignedTo}>{draft.assignedTo}</option>}
+                  {managers.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
               </label>
               <label className="ps-field">
                 <span>Комментарий</span>
