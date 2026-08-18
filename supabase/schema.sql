@@ -334,4 +334,102 @@ where not exists (select 1 from sale_groups g where g.id = sales.id);
 
 update sales set group_id = id where group_id is null;
 
-alter table sales alter column group_id set not null;
+-- group_id намеренно оставлен nullable (без "set not null"): пока
+-- на проде ещё может крутиться старая версия фронтенда, которая не
+-- знает про эту колонку и не заполняет её при сохранении продажи —
+-- NOT NULL здесь ломает старый код с ошибкой на insert. Новый код
+-- всегда проставляет group_id сам.
+
+-- ============================================================
+-- Коэффициент перевода в тонны (этап 10): для отпуска топлива
+-- по весу, помимо литров. Цена остаётся всегда за литр — тонны
+-- лишь ещё один способ ввести/увидеть объём отпуска в форме
+-- продажи (объём в литрах, л × коэффициент / 1000 = тонны).
+-- ============================================================
+alter table fuel_prices add column if not exists density numeric;
+
+update fuel_prices set density = case fuel
+  when 'ДТ К5' then 0.82
+  when 'АИ-92' then 0.72
+  when 'АИ-95' then 0.72
+  else density
+end
+where density is null;
+
+-- ============================================================
+-- Несколько складов и АЗС (этап 11): точки хранения топлива —
+-- склад или АЗС. Приход и продажа привязываются к точке, чтобы
+-- знать остаток по каждой конкретно. Перемещение между точками —
+-- отдельный журнал (не два прихода), уменьшает остаток одной точки
+-- и увеличивает остаток другой в расчёте баланса.
+--
+-- Историчные приходы/продажи (созданные до этой доработки) не
+-- привязаны ни к одной точке (location_id = null) — это осознанно:
+-- мы не знаем, откуда физически шло топливо раньше, а гадать и
+-- дописывать это в один "дефолтный" склад исказило бы остатки
+-- (продажи без точки всё равно списывали бы неизвестно откуда).
+-- Такие записи показываются в интерфейсе отдельным блоком "без
+-- склада" — сумма остатков по всем точкам плюс "без склада" всегда
+-- равна прежнему общему остатку, ничего не потерялось.
+-- ============================================================
+create table if not exists locations (
+  id uuid primary key default gen_random_uuid(),
+  name text not null default '',
+  type text default 'warehouse', -- 'warehouse' | 'station'
+  created_by text default '',
+  created_at timestamptz default now()
+);
+
+alter table locations enable row level security;
+
+drop policy if exists "authenticated read" on locations;
+create policy "authenticated read" on locations for select to authenticated using (true);
+
+drop policy if exists "authenticated insert" on locations;
+create policy "authenticated insert" on locations for insert to authenticated with check (true);
+
+drop policy if exists "authenticated update" on locations;
+create policy "authenticated update" on locations for update to authenticated using (true);
+
+drop policy if exists "authenticated delete" on locations;
+create policy "authenticated delete" on locations for delete to authenticated using (true);
+
+alter publication supabase_realtime add table locations;
+
+create table if not exists stock_transfers (
+  id uuid primary key default gen_random_uuid(),
+  from_location_id uuid references locations(id) on delete set null,
+  to_location_id uuid references locations(id) on delete set null,
+  fuel text default '',
+  volume numeric,
+  transfer_date date default current_date,
+  comment text default '',
+  created_by text default '',
+  created_at timestamptz default now()
+);
+
+alter table stock_transfers enable row level security;
+
+drop policy if exists "authenticated read" on stock_transfers;
+create policy "authenticated read" on stock_transfers for select to authenticated using (true);
+
+drop policy if exists "authenticated insert" on stock_transfers;
+create policy "authenticated insert" on stock_transfers for insert to authenticated with check (true);
+
+drop policy if exists "authenticated update" on stock_transfers;
+create policy "authenticated update" on stock_transfers for update to authenticated using (true);
+
+drop policy if exists "authenticated delete" on stock_transfers;
+create policy "authenticated delete" on stock_transfers for delete to authenticated using (true);
+
+alter publication supabase_realtime add table stock_transfers;
+
+alter table stock_receipts add column if not exists location_id uuid references locations(id) on delete set null;
+alter table sales add column if not exists location_id uuid references locations(id) on delete set null;
+
+-- ============================================================
+-- Оплата сделки (этап 12): факт оплаты — отдельно от отгрузки,
+-- как булев флаг с датой, по тому же образцу, что shipped/shipped_date.
+-- ============================================================
+alter table sale_groups add column if not exists paid boolean default false;
+alter table sale_groups add column if not exists paid_date date;

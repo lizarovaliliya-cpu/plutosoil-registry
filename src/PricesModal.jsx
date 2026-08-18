@@ -28,6 +28,10 @@ export default function PricesModal({ prices, onUpdate, onClose }) {
                     <Cell value={p.priceCashless} onCommit={(v) => onUpdate(f, "priceCashless", v)} type="number" placeholder="0" />
                   </label>
                 </div>
+                <label className="ps-field">
+                  <span>Коэффициент перевода в тонны, кг/л</span>
+                  <Cell value={p.density} onCommit={(v) => onUpdate(f, "density", v)} type="number" placeholder="0.75" />
+                </label>
                 {p.updatedAt > 0 && (
                   <div className="ps-price-row__meta">
                     Обновлено {p.updatedBy || "—"}, {new Date(p.updatedAt).toLocaleString("ru-RU")}

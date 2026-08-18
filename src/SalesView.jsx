@@ -191,10 +191,13 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
                       {fmtInt(toNum(s.sum))} ₽
                       {toNum(s.agentFee) > 0 && <span className="ps-tara-badge"> · агент {fmtInt(toNum(s.agentFee))}</span>}
                     </span>
-                    <span>
+                    <span style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
                       {s.shipped
                         ? <span className="ps-ship-badge ps-ship-badge--done">Отгружено{s.shippedDate ? " " + shortDate(s.shippedDate) : ""}</span>
                         : <span className="ps-ship-badge ps-ship-badge--pending">Не отгружено</span>}
+                      {s.paid
+                        ? <span className="ps-ship-badge ps-ship-badge--done">Оплачено{s.paidDate ? " " + shortDate(s.paidDate) : ""}</span>
+                        : <span className="ps-ship-badge ps-ship-badge--pending">Не оплачено</span>}
                     </span>
                     <span className="ps-journal__manager">{s.createdBy ? <span style={{ color: colorForName(s.createdBy) }}>{s.createdBy}</span> : "—"}</span>
                   </button>

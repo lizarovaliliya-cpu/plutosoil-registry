@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { fmtInt, fmtT } from "./utils.js";
 
 export const FUELS = ["АИ-92", "АИ-95", "ДТ К5"];
-export const DENSITY = { "АИ-92": 0.745, "АИ-95": 0.75, "ДТ К5": 0.84 }; // кг/л, из исходного реестра
+export const DENSITY = { "АИ-92": 0.72, "АИ-95": 0.72, "ДТ К5": 0.82 }; // кг/л, запасное значение — реальный коэффициент задаётся в блоке "Цены"
 
 export const CONTAINER_LABELS = { own: "своя тара", buy: "+ тара", rent: "аренда тары" };
 

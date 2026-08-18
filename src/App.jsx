@@ -6,6 +6,7 @@ import { SEED_DATA } from "./seedData.js";
 import {
   genId, todayStr, toNum, fmtInt, timeAgo, colorForName,
   fromDbClient, toDbClient, fromDbSale, fromDbSaleGroup, buildSales, fromDbPrice, fromDbCompanyProfile, fromDbReceipt,
+  fromDbLocation, toDbLocation, fromDbTransfer,
 } from "./utils.js";
 import { FUELS, DENSITY } from "./shared.jsx";
 import Sidebar from "./Sidebar.jsx";
@@ -17,6 +18,7 @@ import SellModal from "./SellModal.jsx";
 import PricesModal from "./PricesModal.jsx";
 import CompanyProfileModal from "./CompanyProfileModal.jsx";
 import StockReceiptModal from "./StockReceiptModal.jsx";
+import TransferModal from "./TransferModal.jsx";
 
 /* ============================================================
    PlutosOil — Реестр покупателей топлива
@@ -68,10 +70,15 @@ export default function App() {
   const [companyProfile, setCompanyProfile] = useState({});
   const [receipts, setReceipts] = useState([]);
   const [receiptsLoaded, setReceiptsLoaded] = useState(false);
+  const [locations, setLocations] = useState([]);
+  const [locationsLoaded, setLocationsLoaded] = useState(false);
+  const [transfers, setTransfers] = useState([]);
+  const [transfersLoaded, setTransfersLoaded] = useState(false);
   const [sellModal, setSellModal] = useState(null); // { clientId } | null
   const [pricesModalOpen, setPricesModalOpen] = useState(false);
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
   const [receiptModal, setReceiptModal] = useState(null); // { receipt } | null, only when open
+  const [transferModal, setTransferModal] = useState(null); // { transfer } | null, only when open
   const [, forceTick] = useState(0);
   const presenceChannelRef = useRef(null);
 
@@ -223,6 +230,59 @@ export default function App() {
     return () => { if (channel) supabase.removeChannel(channel); };
   }, [session]);
 
+  /* ---- точки хранения (склады/АЗС): загрузка + realtime ---- */
+  useEffect(() => {
+    if (!session) { setLocations([]); setLocationsLoaded(false); return; }
+    let channel;
+    (async () => {
+      const { data } = await supabase.from("locations").select("*").order("created_at", { ascending: true });
+      setLocations((data || []).map(fromDbLocation));
+      setLocationsLoaded(true);
+      channel = supabase.channel("locations-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "locations" }, (payload) => {
+          setLocations((prev) => {
+            if (payload.eventType === "DELETE") return prev.filter((l) => l.id !== payload.old.id);
+            const incoming = fromDbLocation(payload.new);
+            const exists = prev.some((l) => l.id === incoming.id);
+            return exists ? prev.map((l) => (l.id === incoming.id ? incoming : l)) : [...prev, incoming];
+          });
+        })
+        .subscribe();
+    })();
+    return () => { if (channel) supabase.removeChannel(channel); };
+  }, [session]);
+
+  /* ---- перемещения топлива между точками: загрузка + realtime ---- */
+  useEffect(() => {
+    if (!session) { setTransfers([]); setTransfersLoaded(false); return; }
+    let channel;
+    (async () => {
+      const { data } = await supabase.from("stock_transfers").select("*").order("transfer_date", { ascending: false });
+      setTransfers((data || []).map(fromDbTransfer));
+      setTransfersLoaded(true);
+      channel = supabase.channel("stock-transfers-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "stock_transfers" }, (payload) => {
+          setTransfers((prev) => {
+            if (payload.eventType === "DELETE") return prev.filter((t) => t.id !== payload.old.id);
+            const incoming = fromDbTransfer(payload.new);
+            const exists = prev.some((t) => t.id === incoming.id);
+            return exists ? prev.map((t) => (t.id === incoming.id ? incoming : t)) : [incoming, ...prev];
+          });
+        })
+        .subscribe();
+    })();
+    return () => { if (channel) supabase.removeChannel(channel); };
+  }, [session]);
+
+  const createLocation = async (draft) => {
+    const payload = toDbLocation({ ...draft, createdBy: managerName || "Гость" });
+    const { data, error } = await supabase.from("locations").insert([payload]).select().single();
+    if (error || !data) return null;
+    const created = fromDbLocation(data);
+    setLocations((prev) => [...prev, created]);
+    return created;
+  };
+
   /* ---- цены на топливо: загрузка + realtime ---- */
   useEffect(() => {
     if (!session) { setPrices([]); return; }
@@ -250,9 +310,9 @@ export default function App() {
     setPrices((prev) => {
       const exists = prev.some((p) => p.fuel === fuel);
       const patch = { fuel, [field]: value === "" ? "" : num, updatedBy, updatedAt: Date.now() };
-      return exists ? prev.map((p) => (p.fuel === fuel ? { ...p, ...patch } : p)) : [...prev, { priceCash: "", priceCashless: "", ...patch }];
+      return exists ? prev.map((p) => (p.fuel === fuel ? { ...p, ...patch } : p)) : [...prev, { priceCash: "", priceCashless: "", density: "", ...patch }];
     });
-    const dbField = field === "priceCash" ? "price_cash" : "price_cashless";
+    const dbField = field === "priceCash" ? "price_cash" : field === "priceCashless" ? "price_cashless" : "density";
     await supabase.from("fuel_prices").upsert({ fuel, [dbField]: num, updated_by: updatedBy }, { onConflict: "fuel" });
   };
 
@@ -482,7 +542,10 @@ export default function App() {
           ) : view === "stock" ? (
             <StockView
               receipts={receipts} receiptsLoaded={receiptsLoaded} sales={saleLines} managerName={managerName}
+              locations={locations} locationsLoaded={locationsLoaded} transfers={transfers} transfersLoaded={transfersLoaded}
               onOpenReceipt={(receipt) => setReceiptModal({ receipt })}
+              onOpenTransfer={(transfer) => setTransferModal({ transfer })}
+              onCreateLocation={createLocation}
             />
           ) : view === "analytics" ? (
             <AnalyticsView sales={sales} clients={clients} rows={rows} />
@@ -501,7 +564,7 @@ export default function App() {
       {sellModal && (
         <SellModal
           clients={clients} managerName={managerName} managers={managers} presetClientId={sellModal.clientId} group={sellModal.group}
-          prices={prices} companyProfile={companyProfile} onCreateClient={createClient} onClose={() => setSellModal(null)}
+          prices={prices} companyProfile={companyProfile} locations={locations} onCreateClient={createClient} onClose={() => setSellModal(null)}
         />
       )}
       {pricesModalOpen && (
@@ -512,8 +575,14 @@ export default function App() {
       )}
       {receiptModal && (
         <StockReceiptModal
-          receipt={receiptModal.receipt} managerName={managerName} managers={managers}
+          receipt={receiptModal.receipt} managerName={managerName} managers={managers} locations={locations}
           onClose={() => setReceiptModal(null)}
+        />
+      )}
+      {transferModal && (
+        <TransferModal
+          transfer={transferModal.transfer} managerName={managerName} managers={managers} locations={locations}
+          onClose={() => setTransferModal(null)}
         />
       )}
     </div>
@@ -625,6 +694,14 @@ function GlobalStyle() {
 
       .ps-drawer__overlay { position:fixed; inset:0; background:rgba(16,21,28,0.35); display:flex; justify-content:flex-end; z-index:50; }
       .ps-drawer__panel { width:min(500px, 100%); background: var(--paper); height:100%; display:flex; flex-direction:column; box-shadow:-4px 0 20px rgba(16,21,28,0.15); }
+      .ps-modal__overlay { position:fixed; inset:0; background:rgba(16,21,28,0.4); display:flex; align-items:center; justify-content:center; z-index:50; padding:24px; }
+      .ps-modal__panel { width:min(880px, 100%); max-height:92vh; background: var(--paper); border-radius:16px; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(16,21,28,0.3); overflow:hidden; }
+      .ps-modal__panel .ps-drawer__body { display:grid; grid-template-columns:1fr 1fr; align-content:start; gap:12px 18px; }
+      .ps-modal__panel .ps-drawer__body > .ps-field-full,
+      .ps-modal__panel .ps-drawer__body > .ps-fieldset,
+      .ps-modal__panel .ps-drawer__body > .ps-field-head,
+      .ps-modal__panel .ps-drawer__body > p { grid-column: 1 / -1; }
+      @media (max-width: 720px) { .ps-modal__panel .ps-drawer__body { grid-template-columns:1fr; } }
       .ps-drawer__head { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--line); background: var(--panel); }
       .ps-drawer__head h2 { font-family: var(--font-display); font-size:17px; margin:0; }
       .ps-drawer__body { flex:1; overflow:auto; padding:18px 22px; display:flex; flex-direction:column; gap:12px; }

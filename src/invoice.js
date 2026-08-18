@@ -19,13 +19,16 @@ function invoiceCopy(group, client, company, docNo, dateStr, copyLabel) {
     total += fuelSum + containerSum;
     if (it.containerMode === "rent") depositSum += toNum(it.containerDeposit) * containerQty;
 
+    const density = toNum(it.density);
+    const tonnes = density > 0 ? (toNum(it.volume) * density) / 1000 : null;
+
     rowNum += 1;
     rows += `
     <tr>
       <td>${rowNum}</td>
       <td>${esc(it.fuel)}</td>
       <td>л</td>
-      <td>${fmtInt(toNum(it.volume))}</td>
+      <td>${fmtInt(toNum(it.volume))}${tonnes != null ? `<br><span class="unit-note">≈ ${tonnes.toLocaleString("ru-RU", { maximumFractionDigits: 3 })} т</span>` : ""}</td>
       <td>${fmtInt(toNum(it.price))}</td>
       <td>${fmtInt(fuelSum)}</td>
     </tr>`;
@@ -62,6 +65,9 @@ function invoiceCopy(group, client, company, docNo, dateStr, copyLabel) {
       <tbody>${rows}</tbody>
     </table>
     <div class="total">Итого: ${fmtInt(total)} ₽</div>
+    <div class="pay-status ${group.paid ? "pay-status--paid" : "pay-status--unpaid"}">
+      Оплата: ${esc(group.paymentMethod) || "—"} — ${group.paid ? `ОПЛАЧЕНО${group.paidDate ? " " + new Date(group.paidDate + "T00:00:00").toLocaleDateString("ru-RU") : ""}` : "НЕ ОПЛАЧЕНО"}
+    </div>
     ${depositSum > 0 ? `<div class="note">Также получен залог за тару: ${fmtInt(depositSum)} ₽ (подлежит возврату при сдаче тары)</div>` : ""}
     <div class="sign">
       <div class="sign-row"><span>Отпустил:</span><span class="sign-name">${esc(company.releasedBy)}</span><span class="sign-line">Подпись ______________</span></div>
@@ -80,14 +86,18 @@ function buildInvoiceHtml(group, client, company) {
   @page { size: A4; margin: 10mm; }
   * { box-sizing: border-box; }
   body { font-family: Arial, sans-serif; font-size: 12px; color: #10151C; margin: 0; }
-  .copy { padding: 6mm 4mm; }
+  .copy { padding: 4mm; }
   .copy-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: #8A94A0; margin-bottom: 4px; }
   .head-title { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
   .parties div { margin-bottom: 3px; }
   table.items { width: 100%; border-collapse: collapse; margin: 10px 0; }
   table.items th, table.items td { border: 1px solid #666; padding: 4px 6px; text-align: left; font-size: 11.5px; }
   table.items th { background: #EEF1F4; }
+  .unit-note { font-size: 10px; color: #8A94A0; }
   .total { font-weight: 700; font-size: 13px; text-align: right; margin-top: 4px; }
+  .pay-status { text-align: right; font-weight: 700; font-size: 11.5px; margin-top: 2px; letter-spacing: 0.02em; }
+  .pay-status--paid { color: #1E8A56; }
+  .pay-status--unpaid { color: #C13B3B; }
   .note { font-size: 11px; color: #444; margin-top: 4px; }
   .sign { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
   .sign-row { display: flex; gap: 10px; align-items: baseline; font-size: 11.5px; }
@@ -102,6 +112,8 @@ function buildInvoiceHtml(group, client, company) {
   ${invoiceCopy(group, client, company, docNo, dateStr, "Экземпляр 1 — Поставщик")}
   <div class="cut"><span>линия отреза</span></div>
   ${invoiceCopy(group, client, company, docNo, dateStr, "Экземпляр 2 — Покупатель")}
+  <div class="cut"><span>линия отреза</span></div>
+  ${invoiceCopy(group, client, company, docNo, dateStr, "Экземпляр 3 — Склад")}
 </body></html>`;
 }
 

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { X, Warehouse, Trash2 } from "lucide-react";
+import { X, ArrowLeftRight, Trash2 } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
-import { toNum, fmtInt, toDbReceipt } from "./utils.js";
+import { toNum, toDbTransfer } from "./utils.js";
 import { FUELS } from "./shared.jsx";
 
 const isoToday = () => {
@@ -10,30 +10,32 @@ const isoToday = () => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
-export default function StockReceiptModal({ receipt, managerName, managers, locations, onClose }) {
-  const isEdit = !!receipt;
-  const [locationId, setLocationId] = useState(receipt?.locationId || (locations?.[0]?.id ?? ""));
-  const [fuel, setFuel] = useState(receipt?.fuel || FUELS[0]);
-  const [volume, setVolume] = useState(receipt?.volume ?? "");
-  const [price, setPrice] = useState(receipt?.price ?? "");
-  const [supplier, setSupplier] = useState(receipt?.supplier || "");
-  const [receiptDate, setReceiptDate] = useState(receipt?.receiptDate || isoToday());
-  const [comment, setComment] = useState(receipt?.comment || "");
-  const [createdBy, setCreatedBy] = useState(receipt?.createdBy || managerName || "");
+export default function TransferModal({ transfer, managerName, managers, locations, onClose }) {
+  const isEdit = !!transfer;
+  const [fromLocationId, setFromLocationId] = useState(transfer?.fromLocationId || (locations[0]?.id ?? ""));
+  const [toLocationId, setToLocationId] = useState(transfer?.toLocationId || (locations[1]?.id ?? locations[0]?.id ?? ""));
+  const [fuel, setFuel] = useState(transfer?.fuel || FUELS[0]);
+  const [volume, setVolume] = useState(transfer?.volume ?? "");
+  const [transferDate, setTransferDate] = useState(transfer?.transferDate || isoToday());
+  const [comment, setComment] = useState(transfer?.comment || "");
+  const [createdBy, setCreatedBy] = useState(transfer?.createdBy || managerName || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
-  const sum = toNum(price) * toNum(volume);
+  const sameLocation = fromLocationId && toLocationId && fromLocationId === toLocationId;
 
   const save = async () => {
-    if (!toNum(volume)) return;
+    if (!toNum(volume) || !fromLocationId || !toLocationId || sameLocation) return;
     setSaving(true);
     setError("");
-    const payload = toDbReceipt({ fuel, volume, price, sum, supplier, receiptDate, comment, locationId, createdBy: createdBy || managerName || "Гость" });
+    const payload = toDbTransfer({
+      fromLocationId, toLocationId, fuel, volume, transferDate, comment,
+      createdBy: createdBy || managerName || "Гость",
+    });
     const { error: err } = isEdit
-      ? await supabase.from("stock_receipts").update(payload).eq("id", receipt.id)
-      : await supabase.from("stock_receipts").insert([payload]);
+      ? await supabase.from("stock_transfers").update(payload).eq("id", transfer.id)
+      : await supabase.from("stock_transfers").insert([payload]);
     setSaving(false);
     if (err) { setError(err.message); return; }
     onClose();
@@ -42,7 +44,7 @@ export default function StockReceiptModal({ receipt, managerName, managers, loca
   const remove = async () => {
     if (!deleteConfirm) { setDeleteConfirm(true); return; }
     setSaving(true);
-    const { error: err } = await supabase.from("stock_receipts").delete().eq("id", receipt.id);
+    const { error: err } = await supabase.from("stock_transfers").delete().eq("id", transfer.id);
     setSaving(false);
     if (err) { setError(err.message); return; }
     onClose();
@@ -52,7 +54,7 @@ export default function StockReceiptModal({ receipt, managerName, managers, loca
     <div className="ps-drawer__overlay" onClick={onClose}>
       <div className="ps-drawer__panel" style={{ width: "min(420px, 100%)" }} onClick={(e) => e.stopPropagation()}>
         <div className="ps-drawer__head">
-          <h2><Warehouse size={17} style={{ verticalAlign: -3, marginRight: 6 }} />{isEdit ? "Приход топлива" : "Новый приход"}</h2>
+          <h2><ArrowLeftRight size={17} style={{ verticalAlign: -3, marginRight: 6 }} />{isEdit ? "Перемещение" : "Переместить топливо"}</h2>
           <button className="ps-mini" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="ps-drawer__body">
@@ -65,12 +67,20 @@ export default function StockReceiptModal({ receipt, managerName, managers, loca
             </select>
           </label>
           <label className="ps-field">
-            <span>Склад/АЗС</span>
-            <select value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-              <option value="">Без склада</option>
-              {(locations || []).map((l) => <option key={l.id} value={l.id}>{l.type === "station" ? "АЗС" : "Склад"} · {l.name}</option>)}
+            <span>Откуда</span>
+            <select value={fromLocationId} onChange={(e) => setFromLocationId(e.target.value)}>
+              {locations.length === 0 && <option value="">Нет точек — сначала добавьте склад/АЗС</option>}
+              {locations.map((l) => <option key={l.id} value={l.id}>{l.type === "station" ? "АЗС" : "Склад"} · {l.name}</option>)}
             </select>
           </label>
+          <label className="ps-field">
+            <span>Куда</span>
+            <select value={toLocationId} onChange={(e) => setToLocationId(e.target.value)}>
+              {locations.length === 0 && <option value="">Нет точек — сначала добавьте склад/АЗС</option>}
+              {locations.map((l) => <option key={l.id} value={l.id}>{l.type === "station" ? "АЗС" : "Склад"} · {l.name}</option>)}
+            </select>
+          </label>
+          {sameLocation && <p style={{ color: "#C13B3B", fontSize: 12.5 }}>«Откуда» и «Куда» не могут совпадать.</p>}
           <label className="ps-field">
             <span>Вид топлива</span>
             <select value={fuel} onChange={(e) => setFuel(e.target.value)}>
@@ -82,22 +92,8 @@ export default function StockReceiptModal({ receipt, managerName, managers, loca
             <input type="number" min="0" step="1" value={volume} onChange={(e) => setVolume(e.target.value)} placeholder="0" />
           </label>
           <label className="ps-field">
-            <span>Цена закупки, ₽/л</span>
-            <input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Необязательно" />
-          </label>
-          {sum > 0 && (
-            <div className="ps-field">
-              <span>Сумма</span>
-              <div className="ps-sell-sum">{fmtInt(sum)} ₽</div>
-            </div>
-          )}
-          <label className="ps-field">
-            <span>Поставщик</span>
-            <input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Необязательно" />
-          </label>
-          <label className="ps-field">
-            <span>Дата прихода</span>
-            <input type="date" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} />
+            <span>Дата перемещения</span>
+            <input type="date" value={transferDate} onChange={(e) => setTransferDate(e.target.value)} />
           </label>
           <label className="ps-field">
             <span>Комментарий</span>
@@ -114,8 +110,8 @@ export default function StockReceiptModal({ receipt, managerName, managers, loca
           <div className="ps-toolbar__spacer" />
           <button type="button" className="ps-btn" onClick={onClose}>Отмена</button>
           <button type="button" className="ps-btn ps-btn--primary" style={{ width: "auto" }}
-            disabled={!toNum(volume) || saving} onClick={save}>
-            {saving ? "Сохранение…" : isEdit ? "Сохранить" : "Добавить приход"}
+            disabled={!toNum(volume) || !fromLocationId || !toLocationId || sameLocation || saving} onClick={save}>
+            {saving ? "Сохранение…" : isEdit ? "Сохранить" : "Переместить"}
           </button>
         </div>
       </div>

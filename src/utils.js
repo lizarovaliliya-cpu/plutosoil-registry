@@ -43,6 +43,7 @@ export const fromDbSale = (s) => ({
   sum: s.sum ?? "", createdAt: s.created_at ? new Date(s.created_at).getTime() : 0,
   containerMode: s.container_mode || "", containerPrice: s.container_price ?? "",
   containerDeposit: s.container_deposit ?? "", containerQty: s.container_qty ?? "",
+  locationId: s.location_id || "",
 });
 
 export const toDbSale = (s) => ({
@@ -51,6 +52,7 @@ export const toDbSale = (s) => ({
   container_price: s.containerPrice === "" ? null : toNum(s.containerPrice),
   container_deposit: s.containerDeposit === "" ? null : toNum(s.containerDeposit),
   container_qty: s.containerQty === "" ? null : toNum(s.containerQty),
+  location_id: s.locationId || null,
 });
 
 /* ---- шапка сделки (клиент, дата, оплата, менеджер, отгрузка) ---- */
@@ -58,6 +60,7 @@ export const fromDbSaleGroup = (g) => ({
   id: g.id, clientId: g.client_id, saleDate: g.sale_date || "", paymentMethod: g.payment_method || "",
   comment: g.comment || "", createdBy: g.created_by || "",
   shipped: !!g.shipped, shippedDate: g.shipped_date || "", agentFee: g.agent_fee ?? "",
+  paid: !!g.paid, paidDate: g.paid_date || "",
   createdAt: g.created_at ? new Date(g.created_at).getTime() : 0,
 });
 
@@ -65,6 +68,7 @@ export const toDbSaleGroup = (g) => ({
   client_id: g.clientId, sale_date: g.saleDate, payment_method: g.paymentMethod,
   comment: g.comment, created_by: g.createdBy,
   shipped: !!g.shipped, shipped_date: g.shipped ? (g.shippedDate || null) : null,
+  paid: !!g.paid, paid_date: g.paid ? (g.paidDate || null) : null,
   agent_fee: g.agentFee === "" ? null : toNum(g.agentFee),
 });
 
@@ -82,7 +86,7 @@ export const buildSales = (groups, lines) => {
 };
 
 export const fromDbPrice = (p) => ({
-  fuel: p.fuel, priceCash: p.price_cash ?? "", priceCashless: p.price_cashless ?? "",
+  fuel: p.fuel, priceCash: p.price_cash ?? "", priceCashless: p.price_cashless ?? "", density: p.density ?? "",
   updatedBy: p.updated_by || "", updatedAt: p.updated_at ? new Date(p.updated_at).getTime() : 0,
 });
 
@@ -90,12 +94,37 @@ export const fromDbReceipt = (r) => ({
   id: r.id, fuel: r.fuel || "", volume: r.volume ?? "", price: r.price ?? "", sum: r.sum ?? "",
   supplier: r.supplier || "", receiptDate: r.receipt_date || "", comment: r.comment || "",
   createdBy: r.created_by || "", createdAt: r.created_at ? new Date(r.created_at).getTime() : 0,
+  locationId: r.location_id || "",
 });
 
 export const toDbReceipt = (r) => ({
   fuel: r.fuel, volume: toNum(r.volume), price: r.price === "" ? null : toNum(r.price),
   sum: toNum(r.sum), supplier: r.supplier, receipt_date: r.receiptDate,
-  comment: r.comment, created_by: r.createdBy,
+  comment: r.comment, created_by: r.createdBy, location_id: r.locationId || null,
+});
+
+/* ---- точки хранения: склад / АЗС ---- */
+export const fromDbLocation = (l) => ({
+  id: l.id, name: l.name || "", type: l.type || "warehouse",
+  createdBy: l.created_by || "", createdAt: l.created_at ? new Date(l.created_at).getTime() : 0,
+});
+
+export const toDbLocation = (l) => ({
+  name: l.name, type: l.type || "warehouse", created_by: l.createdBy,
+});
+
+/* ---- перемещение топлива между точками ---- */
+export const fromDbTransfer = (t) => ({
+  id: t.id, fromLocationId: t.from_location_id || "", toLocationId: t.to_location_id || "",
+  fuel: t.fuel || "", volume: t.volume ?? "", transferDate: t.transfer_date || "",
+  comment: t.comment || "", createdBy: t.created_by || "",
+  createdAt: t.created_at ? new Date(t.created_at).getTime() : 0,
+});
+
+export const toDbTransfer = (t) => ({
+  from_location_id: t.fromLocationId || null, to_location_id: t.toLocationId || null,
+  fuel: t.fuel, volume: toNum(t.volume), transfer_date: t.transferDate,
+  comment: t.comment, created_by: t.createdBy,
 });
 
 export const fromDbCompanyProfile = (p) => ({

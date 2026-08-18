@@ -1,8 +1,8 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { X, ShoppingCart, Trash2, Plus, Printer } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { toNum, fmtInt, toDbSale, toDbSaleGroup, genId } from "./utils.js";
-import { FUELS, SuggestDropdown, SOURCES } from "./shared.jsx";
+import { FUELS, DENSITY, SuggestDropdown, SOURCES } from "./shared.jsx";
 import { printInvoice } from "./invoice.js";
 
 const PAYMENT_METHODS = ["Наличные", "Безналичный", "Карта"];
@@ -19,9 +19,10 @@ const isoToday = () => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
-const emptyLine = (fuel) => ({
+const emptyLine = (fuel, locationId) => ({
   key: genId(), id: null, fuel: fuel || FUELS[0], price: "", volume: "",
   containerMode: "", containerPrice: "", containerDeposit: "", containerQty: "1",
+  locationId: locationId || "",
 });
 
 const lineSum = (l) => {
@@ -31,19 +32,34 @@ const lineSum = (l) => {
   return fuelSum + containerSum;
 };
 
-function FuelLineRow({ line, paymentMethod, prices, onChange, onRemove, canRemove }) {
-  const [autoPrice, setAutoPrice] = useState(line.price !== "" ? toNum(line.price) : null);
+function FuelLineRow({ line, paymentMethod, prices, locations, onChange, onRemove, canRemove }) {
+  // Автоподстановка цены — только для новой, ещё не сохранённой позиции
+  // с ещё не тронутой вручную ценой. У уже сохранённых сделок цена могла
+  // быть зафиксирована по другой (динамической) цене на момент продажи —
+  // её нельзя тихо перезаписывать текущей ценой из блока "Цены".
+  const priceTouchedRef = useRef(!!line.id || line.price !== "");
   useEffect(() => {
+    if (priceTouchedRef.current) return;
     const p = (prices || []).find((pr) => pr.fuel === line.fuel);
     if (!p) return;
     const auto = paymentMethod === "Наличные" ? p.priceCash : p.priceCashless;
     if (auto === "" || auto == null) return;
-    if (line.price === "" || Number(line.price) === autoPrice) {
-      onChange({ price: auto });
-      setAutoPrice(toNum(auto));
-    }
+    onChange({ price: auto });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [line.fuel, paymentMethod, prices]);
+
+  const handlePriceChange = (v) => {
+    priceTouchedRef.current = true;
+    onChange({ price: v });
+  };
+
+  const density = toNum((prices || []).find((pr) => pr.fuel === line.fuel)?.density) || DENSITY[line.fuel] || 0;
+  const tonnesValue = density > 0 && line.volume !== "" ? +(toNum(line.volume) * density / 1000).toFixed(3) : "";
+  const pricePerTonne = density > 0 && toNum(line.price) > 0 ? (toNum(line.price) * 1000) / density : null;
+  const handleVolumeTonnesChange = (v) => {
+    if (v === "" || density <= 0) { onChange({ volume: "" }); return; }
+    onChange({ volume: +(toNum(v) * 1000 / density).toFixed(2) });
+  };
 
   const qty = toNum(line.containerQty) || 1;
   const fuelSum = toNum(line.price) * toNum(line.volume);
@@ -64,14 +80,27 @@ function FuelLineRow({ line, paymentMethod, prices, onChange, onRemove, canRemov
           {FUELS.map((f) => <option key={f} value={f}>{f}</option>)}
         </select>
       </label>
+      <label className="ps-field">
+        <span>Склад/АЗС отпуска *</span>
+        <select value={line.locationId} onChange={(e) => onChange({ locationId: e.target.value })}>
+          <option value="">— выберите —</option>
+          {(locations || []).map((l) => <option key={l.id} value={l.id}>{l.type === "station" ? "АЗС" : "Склад"} · {l.name}</option>)}
+        </select>
+      </label>
+      <label className="ps-field">
+        <span>Цена за литр, ₽ *</span>
+        <input type="number" min="0" step="0.01" value={line.price} onChange={(e) => handlePriceChange(e.target.value)} placeholder="0" />
+        {pricePerTonne != null && <div className="ps-sell-sum__breakdown">≈ {fmtInt(pricePerTonne)} ₽/т</div>}
+      </label>
       <div className="ps-field-row">
-        <label className="ps-field">
-          <span>Цена за литр, ₽ *</span>
-          <input type="number" min="0" step="0.01" value={line.price} onChange={(e) => onChange({ price: e.target.value })} placeholder="0" />
-        </label>
         <label className="ps-field">
           <span>Объём, л *</span>
           <input type="number" min="0" step="1" value={line.volume} onChange={(e) => onChange({ volume: e.target.value })} placeholder="0" />
+        </label>
+        <label className="ps-field">
+          <span>≈ Объём, т</span>
+          <input type="number" min="0" step="0.001" value={tonnesValue} onChange={(e) => handleVolumeTonnesChange(e.target.value)}
+            placeholder={density > 0 ? "0" : "коэффициент не задан"} disabled={density <= 0} />
         </label>
       </div>
       <label className="ps-field">
@@ -124,7 +153,7 @@ function FuelLineRow({ line, paymentMethod, prices, onChange, onRemove, canRemov
   );
 }
 
-export default function SellModal({ clients, managerName, managers, presetClientId, group, prices, companyProfile, onCreateClient, onClose }) {
+export default function SellModal({ clients, managerName, managers, presetClientId, group, prices, companyProfile, locations, onCreateClient, onClose }) {
   const isEdit = !!group;
   const sortedClients = useMemo(() => [...clients].sort((a, b) => a.company.localeCompare(b.company, "ru")), [clients]);
   const [clientId, setClientId] = useState(group?.clientId || presetClientId || (sortedClients[0]?.id ?? ""));
@@ -142,14 +171,17 @@ export default function SellModal({ clients, managerName, managers, presetClient
           key: it.id, id: it.id, fuel: it.fuel, price: it.price, volume: it.volume,
           containerMode: it.containerMode, containerPrice: it.containerPrice,
           containerDeposit: it.containerDeposit, containerQty: it.containerQty || "1",
+          locationId: it.locationId || "",
         }))
-      : [emptyLine()]
+      : [emptyLine(FUELS[0], locations?.[0]?.id)]
   );
   const [saleDate, setSaleDate] = useState(group?.saleDate || isoToday());
   const [paymentMethod, setPaymentMethod] = useState(group?.paymentMethod || PAYMENT_METHODS[0]);
   const [comment, setComment] = useState(group?.comment || "");
   const [shipped, setShipped] = useState(group?.shipped || false);
   const [shippedDate, setShippedDate] = useState(group?.shippedDate || "");
+  const [paid, setPaid] = useState(group?.paid || false);
+  const [paidDate, setPaidDate] = useState(group?.paidDate || "");
   const [agentFee, setAgentFee] = useState(group?.agentFee ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -159,13 +191,19 @@ export default function SellModal({ clients, managerName, managers, presetClient
   const addLine = () => {
     const usedFuels = new Set(lines.map((l) => l.fuel));
     const nextFuel = FUELS.find((f) => !usedFuels.has(f)) || FUELS[0];
-    setLines((prev) => [...prev, emptyLine(nextFuel)]);
+    const lastLocationId = lines[lines.length - 1]?.locationId || locations?.[0]?.id || "";
+    setLines((prev) => [...prev, emptyLine(nextFuel, lastLocationId)]);
   };
   const removeLine = (key) => setLines((prev) => (prev.length > 1 ? prev.filter((l) => l.key !== key) : prev));
 
   const totalSum = lines.reduce((a, l) => a + lineSum(l), 0);
   const depositTotal = lines.reduce((a, l) => a + (l.containerMode === "rent" ? toNum(l.containerDeposit) * (toNum(l.containerQty) || 1) : 0), 0);
-  const linesValid = lines.every((l) => toNum(l.price) > 0 && toNum(l.volume) > 0);
+  // Склад/АЗС обязателен только для новых позиций — у старых сделок
+  // (созданных до появления складов) он мог быть не указан, и это не
+  // должно блокировать сохранение остальных изменений в такой сделке.
+  // Цена может быть 0 — это нужно для безвозмездной передачи товара
+  // (клиенту не выставляют счёт, но объём фиксируется и списывается со склада).
+  const linesValid = lines.every((l) => l.price !== "" && toNum(l.price) >= 0 && toNum(l.volume) > 0 && (l.id || l.locationId));
 
   const save = async () => {
     if (!clientId || !linesValid) return;
@@ -173,7 +211,7 @@ export default function SellModal({ clients, managerName, managers, presetClient
     setError("");
 
     const groupPayload = toDbSaleGroup({
-      clientId, saleDate, paymentMethod, comment, shipped, shippedDate, agentFee,
+      clientId, saleDate, paymentMethod, comment, shipped, shippedDate, paid, paidDate, agentFee,
       createdBy: createdBy || managerName || "Гость",
     });
 
@@ -252,20 +290,26 @@ export default function SellModal({ clients, managerName, managers, presetClient
   const handlePrint = () => {
     const client = clients.find((c) => c.id === clientId);
     printInvoice(
-      { id: group?.id, saleDate, items: lines.map((l) => ({ ...l, sum: lineSum(l) })) },
+      {
+        id: group?.id, saleDate, paymentMethod, paid, paidDate,
+        items: lines.map((l) => ({
+          ...l, sum: lineSum(l),
+          density: toNum((prices || []).find((pr) => pr.fuel === l.fuel)?.density) || DENSITY[l.fuel] || 0,
+        })),
+      },
       client, companyProfile || {}
     );
   };
 
   return (
-    <div className="ps-drawer__overlay" onClick={onClose}>
-      <div className="ps-drawer__panel" style={{ width: "min(460px, 100%)" }} onClick={(e) => e.stopPropagation()}>
+    <div className="ps-modal__overlay" onClick={onClose}>
+      <div className="ps-modal__panel" onClick={(e) => e.stopPropagation()}>
         <div className="ps-drawer__head">
           <h2><ShoppingCart size={17} style={{ verticalAlign: -3, marginRight: 6 }} />{isEdit ? "Сделка" : "Оформить продажу"}</h2>
           <button className="ps-mini" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="ps-drawer__body">
-          <div className="ps-field">
+          <div className="ps-field ps-field-full">
             <div className="ps-field-head">
               <span>Клиент *</span>
               {!newClientMode && !(presetClientId && !isEdit) && (
@@ -334,14 +378,14 @@ export default function SellModal({ clients, managerName, managers, presetClient
           </div>
           {lines.map((l) => (
             <FuelLineRow
-              key={l.key} line={l} paymentMethod={paymentMethod} prices={prices}
+              key={l.key} line={l} paymentMethod={paymentMethod} prices={prices} locations={locations}
               onChange={(patch) => updateLine(l.key, patch)}
               onRemove={() => removeLine(l.key)}
               canRemove={lines.length > 1}
             />
           ))}
 
-          <div className="ps-field">
+          <div className="ps-field ps-field-full">
             <span>Итого по сделке</span>
             <div className="ps-sell-sum">{fmtInt(totalSum)} ₽</div>
             {depositTotal > 0 && <div className="ps-sell-sum__breakdown">+ залог за тару {fmtInt(depositTotal)} ₽ (не входит в выручку)</div>}
@@ -368,7 +412,20 @@ export default function SellModal({ clients, managerName, managers, presetClient
               <input type="date" value={shippedDate} onChange={(e) => setShippedDate(e.target.value)} />
             </label>
           )}
-          <label className="ps-field">
+          <label className="ps-check-field">
+            <input type="checkbox" checked={paid} onChange={(e) => {
+              setPaid(e.target.checked);
+              if (e.target.checked && !paidDate) setPaidDate(isoToday());
+            }} />
+            <span>Оплачено</span>
+          </label>
+          {paid && (
+            <label className="ps-field">
+              <span>Дата оплаты</span>
+              <input type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
+            </label>
+          )}
+          <label className="ps-field ps-field-full">
             <span>Комментарий</span>
             <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Необязательно" />
           </label>
