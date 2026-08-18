@@ -28,6 +28,9 @@ const shortDate = (iso) => {
   return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}`;
 };
 
+const fuelSummary = (items) =>
+  items.map((i) => `${i.fuel || "—"}${i.containerMode ? ` (${CONTAINER_LABELS[i.containerMode]})` : ""}`).join(", ");
+
 export default function SalesView({ sales, salesLoaded, clients, managerName, onOpenSell }) {
   const [search, setSearch] = useState("");
   const [fuelFilter, setFuelFilter] = useState(null);
@@ -56,7 +59,7 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
 
   const filtered = useMemo(() => {
     let out = enriched;
-    if (fuelFilter) out = out.filter((s) => s.fuel === fuelFilter);
+    if (fuelFilter) out = out.filter((s) => s.items.some((i) => i.fuel === fuelFilter));
     if (managerFilter) out = out.filter((s) => s.createdBy === managerFilter);
     if (onlyUnshipped) out = out.filter((s) => !s.shipped);
     if (period === "today") out = out.filter((s) => s.saleDate === todayIso());
@@ -66,7 +69,7 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
     }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
-      out = out.filter((s) => [s.clientName, s.fuel, s.comment, s.createdBy].some((v) => (v || "").toLowerCase().includes(q)));
+      out = out.filter((s) => [s.clientName, s.comment, s.createdBy, ...s.items.map((i) => i.fuel)].some((v) => (v || "").toLowerCase().includes(q)));
     }
     return [...out].sort((a, b) => (b.saleDate || "").localeCompare(a.saleDate || "") || b.createdAt - a.createdAt);
   }, [enriched, search, fuelFilter, managerFilter, onlyUnshipped, period, customFrom, customTo]);
@@ -93,11 +96,16 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
 
   const exportExcel = () => {
     const headers = ["Дата", "Клиент", "Топливо", "Цена, ₽/л", "Объём, л", "Тара", "Кол-во тары, шт", "Цена тары, ₽", "Залог, ₽", "Сумма, ₽", "Агентское вознаграждение, ₽", "Отгружено", "Дата отгрузки", "Менеджер", "Комментарий"];
-    const body = filtered.map((s) => [
-      s.saleDate, s.clientName, s.fuel, toNum(s.price), toNum(s.volume),
-      s.containerMode ? CONTAINER_LABELS[s.containerMode] : "", toNum(s.containerQty) || "", toNum(s.containerPrice) || "", toNum(s.containerDeposit) || "",
-      toNum(s.sum), toNum(s.agentFee) || "", s.shipped ? "Да" : "Нет", s.shippedDate || "", s.createdBy, s.comment,
-    ]);
+    const body = [];
+    filtered.forEach((s) => {
+      s.items.forEach((it, idx) => {
+        body.push([
+          s.saleDate, s.clientName, it.fuel, toNum(it.price), toNum(it.volume),
+          it.containerMode ? CONTAINER_LABELS[it.containerMode] : "", toNum(it.containerQty) || "", toNum(it.containerPrice) || "", toNum(it.containerDeposit) || "",
+          toNum(it.sum), idx === 0 ? (toNum(s.agentFee) || "") : "", s.shipped ? "Да" : "Нет", s.shippedDate || "", s.createdBy, idx === 0 ? s.comment : "",
+        ]);
+      });
+    });
     body.push(["", "", "", "", "", "", "", "", "", grandTotal, agentFeeTotal || "", "", "", "", "ИТОГО"]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...body]);
     ws["!cols"] = headers.map(() => ({ wch: 18 }));
@@ -176,11 +184,8 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
                 {entries.map((s) => (
                   <button key={s.id} type="button" className="ps-journal__entry" onClick={() => onOpenSell(s.clientId, s)}>
                     <span className="ps-journal__client">{s.clientName}</span>
-                    <span className="ps-history__fuel">
-                      {s.fuel || "—"}
-                      {s.containerMode && <span className="ps-tara-badge"> · {CONTAINER_LABELS[s.containerMode]}</span>}
-                    </span>
-                    <span className="ps-journal__vol">{fmtInt(toNum(s.volume))} л</span>
+                    <span className="ps-history__fuel">{fuelSummary(s.items)}</span>
+                    <span className="ps-journal__vol">{fmtInt(s.items.reduce((a, i) => a + toNum(i.volume), 0))} л</span>
                     <span className="ps-journal__payment">{s.paymentMethod || "—"}</span>
                     <span className="ps-journal__sum">
                       {fmtInt(toNum(s.sum))} ₽

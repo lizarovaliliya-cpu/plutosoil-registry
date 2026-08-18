@@ -293,11 +293,13 @@ export default function ClientsView({
                   {(salesByClient.get(draft.id) || []).map((s) => (
                     <button key={s.id} type="button" className="ps-history__row ps-history__row--clickable" onClick={() => onSell(draft.id, s)}>
                       <span className="ps-history__fuel">
-                        {s.fuel || "—"}
-                        {s.containerMode && <span className="ps-tara-badge"> · {CONTAINER_LABELS[s.containerMode]}</span>}
+                        {(s.items || []).map((i) => i.fuel || "—").join(", ")}
+                        {(s.items || []).some((i) => i.containerMode) && (
+                          <span className="ps-tara-badge"> · {(s.items || []).filter((i) => i.containerMode).map((i) => CONTAINER_LABELS[i.containerMode]).join(", ")}</span>
+                        )}
                       </span>
                       <span>{s.saleDate}</span>
-                      <span>{fmtInt(toNum(s.volume))} л</span>
+                      <span>{fmtInt((s.items || []).reduce((a, i) => a + toNum(i.volume), 0))} л</span>
                       <span className="ps-history__sum">
                         {fmtInt(toNum(s.sum))} ₽
                         {toNum(s.agentFee) > 0 && <span className="ps-tara-badge"> · агент {fmtInt(toNum(s.agentFee))}</span>}

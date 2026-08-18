@@ -275,3 +275,56 @@ alter publication supabase_realtime add table fuel_prices;
 
 insert into fuel_prices (fuel) values ('АИ-92'), ('АИ-95'), ('ДТ К5')
 on conflict (fuel) do nothing;
+
+-- ============================================================
+-- Мульти-позиционные продажи (этап 9): одна продажа может
+-- включать несколько видов топлива (несколько строк в sales),
+-- объединённых в одну сделку и одну накладную. "Шапка" сделки
+-- (клиент, дата, оплата, менеджер, отгрузка, комментарий,
+-- агентское вознаграждение — одна сумма на всю сделку) переезжает
+-- в отдельную таблицу sale_groups; sales остаётся таблицей строк-
+-- позиций (топливо/цена/объём/тара), связанных через group_id.
+-- ============================================================
+create table if not exists sale_groups (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid references clients(id) on delete set null,
+  sale_date date default current_date,
+  payment_method text default '',
+  comment text default '',
+  created_by text default '',
+  shipped boolean default false,
+  shipped_date date,
+  agent_fee numeric,
+  created_at timestamptz default now()
+);
+
+alter table sale_groups enable row level security;
+
+drop policy if exists "authenticated read" on sale_groups;
+create policy "authenticated read" on sale_groups for select to authenticated using (true);
+
+drop policy if exists "authenticated insert" on sale_groups;
+create policy "authenticated insert" on sale_groups for insert to authenticated with check (true);
+
+drop policy if exists "authenticated update" on sale_groups;
+create policy "authenticated update" on sale_groups for update to authenticated using (true);
+
+drop policy if exists "authenticated delete" on sale_groups;
+create policy "authenticated delete" on sale_groups for delete to authenticated using (true);
+
+alter publication supabase_realtime add table sale_groups;
+
+alter table sales add column if not exists group_id uuid references sale_groups(id) on delete cascade;
+
+-- Разовая миграция: у каждой существующей строки sales — своя
+-- "сделка" из одной позиции. Переиспользуем id строки sales как id
+-- новой sale_groups, чтобы номер накладной (берётся из id) не
+-- изменился для уже оформленных сделок.
+insert into sale_groups (id, client_id, sale_date, payment_method, comment, created_by, shipped, shipped_date, agent_fee, created_at)
+select id, client_id, sale_date, payment_method, comment, created_by, shipped, shipped_date, agent_fee, created_at
+from sales
+where not exists (select 1 from sale_groups g where g.id = sales.id);
+
+update sales set group_id = id where group_id is null;
+
+alter table sales alter column group_id set not null;

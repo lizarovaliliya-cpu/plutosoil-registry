@@ -5,7 +5,7 @@ import { supabase } from "./supabaseClient.js";
 import { SEED_DATA } from "./seedData.js";
 import {
   genId, todayStr, toNum, fmtInt, timeAgo, colorForName,
-  fromDbClient, toDbClient, fromDbSale, fromDbPrice, fromDbCompanyProfile, fromDbReceipt,
+  fromDbClient, toDbClient, fromDbSale, fromDbSaleGroup, buildSales, fromDbPrice, fromDbCompanyProfile, fromDbReceipt,
 } from "./utils.js";
 import { FUELS, DENSITY } from "./shared.jsx";
 import Sidebar from "./Sidebar.jsx";
@@ -60,8 +60,10 @@ export default function App() {
   const [view, setView] = useState("clients");
   const [clients, setClients] = useState([]);
   const [clientsLoaded, setClientsLoaded] = useState(false);
-  const [sales, setSales] = useState([]);
-  const [salesLoaded, setSalesLoaded] = useState(false);
+  const [saleLines, setSaleLines] = useState([]);
+  const [saleLinesLoaded, setSaleLinesLoaded] = useState(false);
+  const [saleGroupsRaw, setSaleGroupsRaw] = useState([]);
+  const [saleGroupsLoaded, setSaleGroupsLoaded] = useState(false);
   const [prices, setPrices] = useState([]);
   const [companyProfile, setCompanyProfile] = useState({});
   const [receipts, setReceipts] = useState([]);
@@ -152,17 +154,39 @@ export default function App() {
     return () => { if (channel) supabase.removeChannel(channel); };
   }, [session]);
 
-  /* ---- продажи: загрузка + realtime ---- */
+  /* ---- продажи: шапки сделок (sale_groups) — загрузка + realtime ---- */
   useEffect(() => {
-    if (!session) { setSales([]); setSalesLoaded(false); return; }
+    if (!session) { setSaleGroupsRaw([]); setSaleGroupsLoaded(false); return; }
     let channel;
     (async () => {
-      const { data } = await supabase.from("sales").select("*").order("sale_date", { ascending: false });
-      setSales((data || []).map(fromDbSale));
-      setSalesLoaded(true);
+      const { data } = await supabase.from("sale_groups").select("*").order("sale_date", { ascending: false });
+      setSaleGroupsRaw((data || []).map(fromDbSaleGroup));
+      setSaleGroupsLoaded(true);
+      channel = supabase.channel("sale-groups-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "sale_groups" }, (payload) => {
+          setSaleGroupsRaw((prev) => {
+            if (payload.eventType === "DELETE") return prev.filter((g) => g.id !== payload.old.id);
+            const incoming = fromDbSaleGroup(payload.new);
+            const exists = prev.some((g) => g.id === incoming.id);
+            return exists ? prev.map((g) => (g.id === incoming.id ? incoming : g)) : [incoming, ...prev];
+          });
+        })
+        .subscribe();
+    })();
+    return () => { if (channel) supabase.removeChannel(channel); };
+  }, [session]);
+
+  /* ---- продажи: позиции топлива (sales) — загрузка + realtime ---- */
+  useEffect(() => {
+    if (!session) { setSaleLines([]); setSaleLinesLoaded(false); return; }
+    let channel;
+    (async () => {
+      const { data } = await supabase.from("sales").select("*");
+      setSaleLines((data || []).map(fromDbSale));
+      setSaleLinesLoaded(true);
       channel = supabase.channel("sales-changes")
         .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, (payload) => {
-          setSales((prev) => {
+          setSaleLines((prev) => {
             if (payload.eventType === "DELETE") return prev.filter((s) => s.id !== payload.old.id);
             const incoming = fromDbSale(payload.new);
             const exists = prev.some((s) => s.id === incoming.id);
@@ -173,6 +197,9 @@ export default function App() {
     })();
     return () => { if (channel) supabase.removeChannel(channel); };
   }, [session]);
+
+  const salesLoaded = saleLinesLoaded && saleGroupsLoaded;
+  const sales = useMemo(() => buildSales(saleGroupsRaw, saleLines), [saleGroupsRaw, saleLines]);
 
   /* ---- склад (приход топлива): загрузка + realtime ---- */
   useEffect(() => {
@@ -346,7 +373,7 @@ export default function App() {
       }
     });
     let totalSum = 0, totalPurchased = 0;
-    sales.forEach((s) => {
+    saleLines.forEach((s) => {
       const vol = toNum(s.volume), sum = toNum(s.sum);
       totalSum += sum;
       totalPurchased += vol;
@@ -356,7 +383,7 @@ export default function App() {
       }
     });
     return { byFuel, totalClients: clientSet.size, totalSum, totalPurchased, totalRows: rows.length };
-  }, [rows, sales]);
+  }, [rows, saleLines]);
 
   const managers = useMemo(() => {
     const set = new Set([
@@ -450,11 +477,11 @@ export default function App() {
           {view === "sales" ? (
             <SalesView
               sales={sales} salesLoaded={salesLoaded} clients={clients} managerName={managerName}
-              onOpenSell={(clientId, sale) => setSellModal({ clientId, sale })}
+              onOpenSell={(clientId, group) => setSellModal({ clientId, group })}
             />
           ) : view === "stock" ? (
             <StockView
-              receipts={receipts} receiptsLoaded={receiptsLoaded} sales={sales} managerName={managerName}
+              receipts={receipts} receiptsLoaded={receiptsLoaded} sales={saleLines} managerName={managerName}
               onOpenReceipt={(receipt) => setReceiptModal({ receipt })}
             />
           ) : view === "analytics" ? (
@@ -464,7 +491,7 @@ export default function App() {
               clients={clients} loaded={clientsLoaded} rows={rows} sales={sales} managerName={managerName}
               summary={summary} managers={managers}
               onCreate={createClient} onUpdate={updateClient} onDelete={deleteClient}
-              onSell={(clientId, sale) => setSellModal({ clientId, sale })}
+              onSell={(clientId, group) => setSellModal({ clientId, group })}
               onCommitField={commitField} onRemoveRow={removeRow} onActualize={actualize}
               onAddDeal={addDealForClient} onExportExcel={exportExcel}
             />
@@ -473,7 +500,7 @@ export default function App() {
       </div>
       {sellModal && (
         <SellModal
-          clients={clients} managerName={managerName} managers={managers} presetClientId={sellModal.clientId} sale={sellModal.sale}
+          clients={clients} managerName={managerName} managers={managers} presetClientId={sellModal.clientId} group={sellModal.group}
           prices={prices} companyProfile={companyProfile} onCreateClient={createClient} onClose={() => setSellModal(null)}
         />
       )}

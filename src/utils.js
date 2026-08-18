@@ -37,28 +37,49 @@ export const toDbClient = (c) => ({
   assigned_to: c.assignedTo,
 });
 
+/* ---- позиция продажи (один вид топлива в рамках сделки) ---- */
 export const fromDbSale = (s) => ({
-  id: s.id, clientId: s.client_id, fuel: s.fuel || "", price: s.price ?? "", volume: s.volume ?? "",
-  sum: s.sum ?? "", saleDate: s.sale_date || "", paymentMethod: s.payment_method || "",
-  comment: s.comment || "", createdBy: s.created_by || "",
-  createdAt: s.created_at ? new Date(s.created_at).getTime() : 0,
+  id: s.id, groupId: s.group_id, fuel: s.fuel || "", price: s.price ?? "", volume: s.volume ?? "",
+  sum: s.sum ?? "", createdAt: s.created_at ? new Date(s.created_at).getTime() : 0,
   containerMode: s.container_mode || "", containerPrice: s.container_price ?? "",
   containerDeposit: s.container_deposit ?? "", containerQty: s.container_qty ?? "",
-  shipped: !!s.shipped, shippedDate: s.shipped_date || "",
-  agentFee: s.agent_fee ?? "",
 });
 
 export const toDbSale = (s) => ({
-  client_id: s.clientId, fuel: s.fuel, price: toNum(s.price), volume: toNum(s.volume),
-  sum: toNum(s.sum), sale_date: s.saleDate, payment_method: s.paymentMethod,
-  comment: s.comment, created_by: s.createdBy,
+  group_id: s.groupId, fuel: s.fuel, price: toNum(s.price), volume: toNum(s.volume), sum: toNum(s.sum),
   container_mode: s.containerMode || "",
   container_price: s.containerPrice === "" ? null : toNum(s.containerPrice),
   container_deposit: s.containerDeposit === "" ? null : toNum(s.containerDeposit),
   container_qty: s.containerQty === "" ? null : toNum(s.containerQty),
-  shipped: !!s.shipped, shipped_date: s.shipped ? (s.shippedDate || null) : null,
-  agent_fee: s.agentFee === "" ? null : toNum(s.agentFee),
 });
+
+/* ---- шапка сделки (клиент, дата, оплата, менеджер, отгрузка) ---- */
+export const fromDbSaleGroup = (g) => ({
+  id: g.id, clientId: g.client_id, saleDate: g.sale_date || "", paymentMethod: g.payment_method || "",
+  comment: g.comment || "", createdBy: g.created_by || "",
+  shipped: !!g.shipped, shippedDate: g.shipped_date || "", agentFee: g.agent_fee ?? "",
+  createdAt: g.created_at ? new Date(g.created_at).getTime() : 0,
+});
+
+export const toDbSaleGroup = (g) => ({
+  client_id: g.clientId, sale_date: g.saleDate, payment_method: g.paymentMethod,
+  comment: g.comment, created_by: g.createdBy,
+  shipped: !!g.shipped, shipped_date: g.shipped ? (g.shippedDate || null) : null,
+  agent_fee: g.agentFee === "" ? null : toNum(g.agentFee),
+});
+
+/* ---- собрать сделки: шапка + её позиции ---- */
+export const buildSales = (groups, lines) => {
+  const byGroup = new Map();
+  lines.forEach((l) => {
+    if (!byGroup.has(l.groupId)) byGroup.set(l.groupId, []);
+    byGroup.get(l.groupId).push(l);
+  });
+  return groups.map((g) => {
+    const items = byGroup.get(g.id) || [];
+    return { ...g, items, sum: items.reduce((a, i) => a + toNum(i.sum), 0) };
+  });
+};
 
 export const fromDbPrice = (p) => ({
   fuel: p.fuel, priceCash: p.price_cash ?? "", priceCashless: p.price_cashless ?? "",

@@ -71,7 +71,7 @@ export default function AnalyticsView({ sales, clients, rows }) {
 
   const byFuel = useMemo(() => {
     const map = new Map(FUELS.map((f) => [f, 0]));
-    filteredSales.forEach((s) => { if (map.has(s.fuel)) map.set(s.fuel, map.get(s.fuel) + toNum(s.sum)); });
+    filteredSales.flatMap((s) => s.items || []).forEach((it) => { if (map.has(it.fuel)) map.set(it.fuel, map.get(it.fuel) + toNum(it.sum)); });
     return FUELS.map((f) => ({ label: f, value: map.get(f) }));
   }, [filteredSales]);
 

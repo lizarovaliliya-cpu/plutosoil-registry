@@ -4,33 +4,44 @@ import { CONTAINER_LABELS } from "./shared.jsx";
 const esc = (s) =>
   String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-function invoiceCopy(sale, client, company, docNo, dateStr, copyLabel) {
-  const fuelSum = toNum(sale.price) * toNum(sale.volume);
-  const hasContainer = sale.containerMode === "buy" || sale.containerMode === "rent";
-  const containerQty = toNum(sale.containerQty) || 1;
-  const containerSum = hasContainer ? toNum(sale.containerPrice) * containerQty : 0;
-  const depositSum = sale.containerMode === "rent" ? toNum(sale.containerDeposit) * containerQty : 0;
+function invoiceCopy(group, client, company, docNo, dateStr, copyLabel) {
+  const items = group.items || [];
+  let rowNum = 0;
+  let rows = "";
+  let total = 0;
+  let depositSum = 0;
 
-  let rows = `
-    <tr>
-      <td>1</td>
-      <td>${esc(sale.fuel)}</td>
-      <td>л</td>
-      <td>${fmtInt(toNum(sale.volume))}</td>
-      <td>${fmtInt(toNum(sale.price))}</td>
-      <td>${fmtInt(fuelSum)}</td>
-    </tr>`;
-  if (hasContainer) {
+  items.forEach((it) => {
+    const fuelSum = toNum(it.price) * toNum(it.volume);
+    const hasContainer = it.containerMode === "buy" || it.containerMode === "rent";
+    const containerQty = toNum(it.containerQty) || 1;
+    const containerSum = hasContainer ? toNum(it.containerPrice) * containerQty : 0;
+    total += fuelSum + containerSum;
+    if (it.containerMode === "rent") depositSum += toNum(it.containerDeposit) * containerQty;
+
+    rowNum += 1;
     rows += `
     <tr>
-      <td>2</td>
-      <td>Тара (${esc(CONTAINER_LABELS[sale.containerMode] || "")})</td>
+      <td>${rowNum}</td>
+      <td>${esc(it.fuel)}</td>
+      <td>л</td>
+      <td>${fmtInt(toNum(it.volume))}</td>
+      <td>${fmtInt(toNum(it.price))}</td>
+      <td>${fmtInt(fuelSum)}</td>
+    </tr>`;
+    if (hasContainer) {
+      rowNum += 1;
+      rows += `
+    <tr>
+      <td>${rowNum}</td>
+      <td>Тара (${esc(CONTAINER_LABELS[it.containerMode] || "")}) — ${esc(it.fuel)}</td>
       <td>шт</td>
       <td>${fmtInt(containerQty)}</td>
-      <td>${fmtInt(toNum(sale.containerPrice))}</td>
+      <td>${fmtInt(toNum(it.containerPrice))}</td>
       <td>${fmtInt(containerSum)}</td>
     </tr>`;
-  }
+    }
+  });
 
   const supplierLine = [esc(company.name) || "—", company.inn && `ИНН ${esc(company.inn)}`, company.kpp && `КПП ${esc(company.kpp)}`, company.address && esc(company.address)]
     .filter(Boolean).join(", ");
@@ -50,7 +61,7 @@ function invoiceCopy(sale, client, company, docNo, dateStr, copyLabel) {
       <thead><tr><th>№</th><th>Наименование</th><th>Ед.</th><th>Кол-во</th><th>Цена, ₽</th><th>Сумма, ₽</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
-    <div class="total">Итого: ${fmtInt(toNum(sale.sum))} ₽</div>
+    <div class="total">Итого: ${fmtInt(total)} ₽</div>
     ${depositSum > 0 ? `<div class="note">Также получен залог за тару: ${fmtInt(depositSum)} ₽ (подлежит возврату при сдаче тары)</div>` : ""}
     <div class="sign">
       <div class="sign-row"><span>Отпустил:</span><span class="sign-name">${esc(company.releasedBy)}</span><span class="sign-line">Подпись ______________</span></div>
@@ -59,9 +70,9 @@ function invoiceCopy(sale, client, company, docNo, dateStr, copyLabel) {
   </div>`;
 }
 
-function buildInvoiceHtml(sale, client, company) {
-  const docNo = (sale.id || "").replace(/-/g, "").slice(-8).toUpperCase() || "б/н";
-  const dateStr = sale.saleDate ? new Date(sale.saleDate + "T00:00:00").toLocaleDateString("ru-RU") : "";
+function buildInvoiceHtml(group, client, company) {
+  const docNo = (group.id || "").replace(/-/g, "").slice(-8).toUpperCase() || "б/н";
+  const dateStr = group.saleDate ? new Date(group.saleDate + "T00:00:00").toLocaleDateString("ru-RU") : "";
 
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>Накладная ${docNo}</title>
@@ -88,14 +99,14 @@ function buildInvoiceHtml(sale, client, company) {
 </style>
 </head>
 <body>
-  ${invoiceCopy(sale, client, company, docNo, dateStr, "Экземпляр 1 — Поставщик")}
+  ${invoiceCopy(group, client, company, docNo, dateStr, "Экземпляр 1 — Поставщик")}
   <div class="cut"><span>линия отреза</span></div>
-  ${invoiceCopy(sale, client, company, docNo, dateStr, "Экземпляр 2 — Покупатель")}
+  ${invoiceCopy(group, client, company, docNo, dateStr, "Экземпляр 2 — Покупатель")}
 </body></html>`;
 }
 
-export function printInvoice(sale, client, company) {
-  const html = buildInvoiceHtml(sale, client, company);
+export function printInvoice(group, client, company) {
+  const html = buildInvoiceHtml(group, client, company);
 
   let iframe = document.getElementById("ps-print-frame");
   if (!iframe) {
