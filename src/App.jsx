@@ -283,6 +283,14 @@ export default function App() {
     return created;
   };
 
+  const updateLocation = async (id, patch) => {
+    const current = locations.find((l) => l.id === id);
+    if (!current) return;
+    const next = { ...current, ...patch };
+    setLocations((prev) => prev.map((l) => (l.id === id ? next : l)));
+    await supabase.from("locations").update(toDbLocation(next)).eq("id", id);
+  };
+
   /* ---- цены на топливо: загрузка + realtime ---- */
   useEffect(() => {
     if (!session) { setPrices([]); return; }
@@ -546,6 +554,7 @@ export default function App() {
               onOpenReceipt={(receipt) => setReceiptModal({ receipt })}
               onOpenTransfer={(transfer) => setTransferModal({ transfer })}
               onCreateLocation={createLocation}
+              onUpdateLocation={updateLocation}
             />
           ) : view === "analytics" ? (
             <AnalyticsView sales={sales} clients={clients} rows={rows} />
@@ -581,7 +590,7 @@ export default function App() {
       )}
       {transferModal && (
         <TransferModal
-          transfer={transferModal.transfer} managerName={managerName} managers={managers} locations={locations}
+          transfer={transferModal.transfer} managerName={managerName} managers={managers} locations={locations} companyProfile={companyProfile} prices={prices}
           onClose={() => setTransferModal(null)}
         />
       )}

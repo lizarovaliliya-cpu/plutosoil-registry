@@ -289,9 +289,13 @@ export default function SellModal({ clients, managerName, managers, presetClient
 
   const handlePrint = () => {
     const client = clients.find((c) => c.id === clientId);
+    const usedLocationIds = new Set(lines.map((l) => l.locationId).filter(Boolean));
+    const location = usedLocationIds.size === 1
+      ? (locations || []).find((loc) => loc.id === [...usedLocationIds][0]) || null
+      : null;
     printInvoice(
       {
-        id: group?.id, saleDate, paymentMethod, paid, paidDate,
+        id: group?.id, saleDate, paymentMethod, paid, paidDate, location,
         items: lines.map((l) => ({
           ...l, sum: lineSum(l),
           density: toNum((prices || []).find((pr) => pr.fuel === l.fuel)?.density) || DENSITY[l.fuel] || 0,

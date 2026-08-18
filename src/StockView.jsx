@@ -19,7 +19,7 @@ const locationLabel = (l) => (l ? `${l.type === "station" ? "АЗС" : "Скла
 export default function StockView({
   receipts, receiptsLoaded, sales, managerName,
   locations, locationsLoaded, transfers, transfersLoaded,
-  onOpenReceipt, onOpenTransfer, onCreateLocation,
+  onOpenReceipt, onOpenTransfer, onCreateLocation, onUpdateLocation,
 }) {
   const [search, setSearch] = useState("");
   const [fuelFilter, setFuelFilter] = useState(null);
@@ -28,8 +28,10 @@ export default function StockView({
   const [manageOpen, setManageOpen] = useState(false);
   const [newLocationName, setNewLocationName] = useState("");
   const [newLocationType, setNewLocationType] = useState("warehouse");
+  const [newLocationAddress, setNewLocationAddress] = useState("");
   const [creatingLocation, setCreatingLocation] = useState(false);
   const [locationError, setLocationError] = useState("");
+  const [editAddress, setEditAddress] = useState({}); // { [locationId]: draft address }
 
   const locationById = useMemo(() => new Map((locations || []).map((l) => [l.id, l])), [locations]);
   const locationsOfType = useMemo(() => (locations || []).filter((l) => l.type === locationType), [locations, locationType]);
@@ -86,10 +88,15 @@ export default function StockView({
     if (!newLocationName.trim() || !onCreateLocation) return;
     setCreatingLocation(true);
     setLocationError("");
-    const created = await onCreateLocation({ name: newLocationName.trim(), type: newLocationType });
+    const created = await onCreateLocation({ name: newLocationName.trim(), type: newLocationType, address: newLocationAddress.trim() });
     setCreatingLocation(false);
-    if (created) { setNewLocationName(""); setLocationType(created.type); setLocationFilter(created.id); }
+    if (created) { setNewLocationName(""); setNewLocationAddress(""); setLocationType(created.type); setLocationFilter(created.id); }
     else setLocationError("Не удалось добавить точку — похоже, в базе ещё нет таблицы locations (нужно выполнить SQL-миграцию).");
+  };
+
+  const commitAddress = (locationId, address) => {
+    setEditAddress((prev) => { const next = { ...prev }; delete next[locationId]; return next; });
+    if (onUpdateLocation) onUpdateLocation(locationId, { address });
   };
 
   const filteredReceipts = useMemo(() => {
@@ -189,16 +196,28 @@ export default function StockView({
               </select>
             </label>
           </div>
+          <label className="ps-field">
+            <span>Адрес (для накладной)</span>
+            <input value={newLocationAddress} onChange={(e) => setNewLocationAddress(e.target.value)} placeholder="Необязательно" />
+          </label>
           <button type="button" className="ps-btn ps-btn--primary" style={{ width: "auto" }}
             disabled={!newLocationName.trim() || creatingLocation} onClick={createLocation}>
             <Plus size={13} /> {creatingLocation ? "Добавление…" : "Добавить точку"}
           </button>
           {locationError && <p style={{ color: "#C13B3B", fontSize: 12.5 }}>{locationError}</p>}
           {(locations || []).length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
               {locations.map((l) => (
                 <div key={l.id} style={{ fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}>
-                  {l.type === "station" ? <Fuel size={12} /> : <Building2 size={12} />} {locationLabel(l)}
+                  {l.type === "station" ? <Fuel size={12} /> : <Building2 size={12} />}
+                  <span style={{ minWidth: 140 }}>{locationLabel(l)}</span>
+                  <input
+                    style={{ flex: 1, border: "1px solid var(--line)", borderRadius: 8, padding: "5px 8px", fontSize: 12 }}
+                    value={editAddress[l.id] ?? l.address ?? ""}
+                    placeholder="Адрес для накладной"
+                    onChange={(e) => setEditAddress((prev) => ({ ...prev, [l.id]: e.target.value }))}
+                    onBlur={(e) => { if (e.target.value !== (l.address || "")) commitAddress(l.id, e.target.value); else setEditAddress((prev) => { const next = { ...prev }; delete next[l.id]; return next; }); }}
+                  />
                 </div>
               ))}
             </div>

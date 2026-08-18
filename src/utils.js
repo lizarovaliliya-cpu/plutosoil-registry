@@ -105,12 +105,12 @@ export const toDbReceipt = (r) => ({
 
 /* ---- точки хранения: склад / АЗС ---- */
 export const fromDbLocation = (l) => ({
-  id: l.id, name: l.name || "", type: l.type || "warehouse",
+  id: l.id, name: l.name || "", type: l.type || "warehouse", address: l.address || "",
   createdBy: l.created_by || "", createdAt: l.created_at ? new Date(l.created_at).getTime() : 0,
 });
 
 export const toDbLocation = (l) => ({
-  name: l.name, type: l.type || "warehouse", created_by: l.createdBy,
+  name: l.name, type: l.type || "warehouse", address: l.address || "", created_by: l.createdBy,
 });
 
 /* ---- перемещение топлива между точками ---- */

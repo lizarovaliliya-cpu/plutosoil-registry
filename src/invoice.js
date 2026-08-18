@@ -1,5 +1,6 @@
 import { fmtInt, toNum } from "./utils.js";
 import { CONTAINER_LABELS } from "./shared.jsx";
+import { printHtml } from "./print.js";
 
 const esc = (s) =>
   String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -46,7 +47,9 @@ function invoiceCopy(group, client, company, docNo, dateStr, copyLabel) {
     }
   });
 
-  const supplierLine = [esc(company.name) || "—", company.inn && `ИНН ${esc(company.inn)}`, company.kpp && `КПП ${esc(company.kpp)}`, company.address && esc(company.address)]
+  const location = group.location;
+  const effectiveAddress = (location && location.address) ? location.address : company.address;
+  const supplierLine = [esc(company.name) || "—", company.inn && `ИНН ${esc(company.inn)}`, company.kpp && `КПП ${esc(company.kpp)}`, effectiveAddress && esc(effectiveAddress)]
     .filter(Boolean).join(", ");
   const buyerLine = [esc(client?.company) || "—", client?.inn && `ИНН ${esc(client.inn)}`, client?.kpp && `КПП ${esc(client.kpp)}`, client?.legalAddress && esc(client.legalAddress)]
     .filter(Boolean).join(", ");
@@ -57,6 +60,7 @@ function invoiceCopy(group, client, company, docNo, dateStr, copyLabel) {
     <div class="head-title">Накладная № ${docNo} от ${dateStr}</div>
     <div class="parties">
       <div><b>Поставщик:</b> ${supplierLine}</div>
+      ${location ? `<div><b>Пункт отпуска:</b> ${esc(location.type === "station" ? "АЗС" : "Склад")} · ${esc(location.name)}</div>` : ""}
       <div><b>Покупатель:</b> ${buyerLine}</div>
       ${client?.contactName || client?.phone ? `<div><b>Контактное лицо:</b> ${esc(client?.contactName)}${client?.phone ? `, тел. ${esc(client.phone)}` : ""}</div>` : ""}
     </div>
@@ -118,27 +122,5 @@ function buildInvoiceHtml(group, client, company) {
 }
 
 export function printInvoice(group, client, company) {
-  const html = buildInvoiceHtml(group, client, company);
-
-  let iframe = document.getElementById("ps-print-frame");
-  if (!iframe) {
-    iframe = document.createElement("iframe");
-    iframe.id = "ps-print-frame";
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    document.body.appendChild(iframe);
-  }
-
-  const doc = iframe.contentWindow.document;
-  doc.open();
-  doc.write(html);
-  doc.close();
-
-  requestAnimationFrame(() => {
-    try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) { /* noop */ }
-  });
+  printHtml(buildInvoiceHtml(group, client, company));
 }

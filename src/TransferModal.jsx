@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { X, ArrowLeftRight, Trash2 } from "lucide-react";
+import { X, ArrowLeftRight, Trash2, Printer } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { toNum, toDbTransfer } from "./utils.js";
-import { FUELS } from "./shared.jsx";
+import { FUELS, DENSITY } from "./shared.jsx";
+import { printTransferInvoice } from "./transferInvoice.js";
 
 const isoToday = () => {
   const d = new Date();
@@ -10,12 +11,12 @@ const isoToday = () => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
-export default function TransferModal({ transfer, managerName, managers, locations, onClose }) {
+export default function TransferModal({ transfer, managerName, managers, locations, companyProfile, prices, onClose }) {
   const isEdit = !!transfer;
   const [fromLocationId, setFromLocationId] = useState(transfer?.fromLocationId || (locations[0]?.id ?? ""));
   const [toLocationId, setToLocationId] = useState(transfer?.toLocationId || (locations[1]?.id ?? locations[0]?.id ?? ""));
   const [fuel, setFuel] = useState(transfer?.fuel || FUELS[0]);
-  const [volume, setVolume] = useState(transfer?.volume ?? "");
+  const [volume, setVolume] = useState(transfer?.volume ?? ""); // канонически всегда в литрах
   const [transferDate, setTransferDate] = useState(transfer?.transferDate || isoToday());
   const [comment, setComment] = useState(transfer?.comment || "");
   const [createdBy, setCreatedBy] = useState(transfer?.createdBy || managerName || "");
@@ -24,6 +25,15 @@ export default function TransferModal({ transfer, managerName, managers, locatio
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   const sameLocation = fromLocationId && toLocationId && fromLocationId === toLocationId;
+
+  const density = toNum((prices || []).find((pr) => pr.fuel === fuel)?.density) || DENSITY[fuel] || 0;
+  const m3Value = volume !== "" ? +(toNum(volume) / 1000).toFixed(3) : "";
+  const tonnesValue = density > 0 && volume !== "" ? +(toNum(volume) * density / 1000).toFixed(3) : "";
+  const handleM3Change = (v) => setVolume(v === "" ? "" : +(toNum(v) * 1000).toFixed(2));
+  const handleTonnesChange = (v) => {
+    if (v === "" || density <= 0) { setVolume(""); return; }
+    setVolume(+(toNum(v) * 1000 / density).toFixed(2));
+  };
 
   const save = async () => {
     if (!toNum(volume) || !fromLocationId || !toLocationId || sameLocation) return;
@@ -39,6 +49,15 @@ export default function TransferModal({ transfer, managerName, managers, locatio
     setSaving(false);
     if (err) { setError(err.message); return; }
     onClose();
+  };
+
+  const handlePrint = () => {
+    const fromLocation = locations.find((l) => l.id === fromLocationId);
+    const toLocation = locations.find((l) => l.id === toLocationId);
+    printTransferInvoice(
+      { id: transfer?.id, fuel, volume, density, transferDate, comment, createdBy: createdBy || managerName || "Гость" },
+      fromLocation, toLocation, companyProfile || {}
+    );
   };
 
   const remove = async () => {
@@ -87,9 +106,20 @@ export default function TransferModal({ transfer, managerName, managers, locatio
               {FUELS.map((f) => <option key={f} value={f}>{f}</option>)}
             </select>
           </label>
+          <div className="ps-field-row">
+            <label className="ps-field">
+              <span>Объём, л *</span>
+              <input type="number" min="0" step="1" value={volume} onChange={(e) => setVolume(e.target.value)} placeholder="0" />
+            </label>
+            <label className="ps-field">
+              <span>Объём, м³</span>
+              <input type="number" min="0" step="0.001" value={m3Value} onChange={(e) => handleM3Change(e.target.value)} placeholder="0" />
+            </label>
+          </div>
           <label className="ps-field">
-            <span>Объём, л *</span>
-            <input type="number" min="0" step="1" value={volume} onChange={(e) => setVolume(e.target.value)} placeholder="0" />
+            <span>≈ Объём, т</span>
+            <input type="number" min="0" step="0.001" value={tonnesValue} onChange={(e) => handleTonnesChange(e.target.value)}
+              placeholder={density > 0 ? "0" : "коэффициент не задан"} disabled={density <= 0} />
           </label>
           <label className="ps-field">
             <span>Дата перемещения</span>
@@ -107,6 +137,9 @@ export default function TransferModal({ transfer, managerName, managers, locatio
               <Trash2 size={14} /> {deleteConfirm ? "Точно удалить?" : "Удалить"}
             </button>
           )}
+          <button type="button" className="ps-btn" onClick={handlePrint} disabled={!fromLocationId || !toLocationId || sameLocation}>
+            <Printer size={14} /> Накладная
+          </button>
           <div className="ps-toolbar__spacer" />
           <button type="button" className="ps-btn" onClick={onClose}>Отмена</button>
           <button type="button" className="ps-btn ps-btn--primary" style={{ width: "auto" }}

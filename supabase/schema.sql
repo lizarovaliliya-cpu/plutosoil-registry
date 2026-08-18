@@ -433,3 +433,10 @@ alter table sales add column if not exists location_id uuid references locations
 -- ============================================================
 alter table sale_groups add column if not exists paid boolean default false;
 alter table sale_groups add column if not exists paid_date date;
+
+-- ============================================================
+-- Адрес точки (этап 13): у каждого склада/АЗС свой адрес — чтобы
+-- в накладной был адрес именно того места, откуда фактически
+-- отпустили топливо, а не всегда один и тот же адрес компании.
+-- ============================================================
+alter table locations add column if not exists address text default '';
