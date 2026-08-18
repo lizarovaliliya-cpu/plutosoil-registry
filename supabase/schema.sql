@@ -312,7 +312,14 @@ create policy "authenticated update" on sale_groups for update to authenticated 
 drop policy if exists "authenticated delete" on sale_groups;
 create policy "authenticated delete" on sale_groups for delete to authenticated using (true);
 
-alter publication supabase_realtime add table sale_groups;
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'sale_groups'
+  ) then
+    alter publication supabase_realtime add table sale_groups;
+  end if;
+end $$;
 
 alter table sales add column if not exists group_id uuid references sale_groups(id) on delete cascade;
 
