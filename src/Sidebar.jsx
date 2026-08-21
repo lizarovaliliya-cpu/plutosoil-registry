@@ -1,11 +1,12 @@
 import React from "react";
-import { Fuel, Building2, CalendarDays, BarChart3, Warehouse } from "lucide-react";
+import { Fuel, Building2, CalendarDays, BarChart3, Warehouse, FileSpreadsheet } from "lucide-react";
 
 const ITEMS = [
   { key: "clients", label: "Клиенты", icon: Building2 },
   { key: "sales", label: "Реестр сделок", icon: CalendarDays },
   { key: "stock", label: "Склад", icon: Warehouse },
   { key: "analytics", label: "Аналитика", icon: BarChart3 },
+  { key: "reports", label: "Отчёты", icon: FileSpreadsheet },
 ];
 
 export default function Sidebar({ view, setView }) {

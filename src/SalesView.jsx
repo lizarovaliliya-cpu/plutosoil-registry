@@ -39,6 +39,8 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [onlyUnshipped, setOnlyUnshipped] = useState(false);
+  const [shipFrom, setShipFrom] = useState("");
+  const [shipTo, setShipTo] = useState("");
   const clientById = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
 
   const openCustomPeriod = () => {
@@ -67,12 +69,15 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
     else if (period === "custom") {
       out = out.filter((s) => (!customFrom || s.saleDate >= customFrom) && (!customTo || s.saleDate <= customTo));
     }
+    if (shipFrom || shipTo) {
+      out = out.filter((s) => s.shippedDate && (!shipFrom || s.shippedDate >= shipFrom) && (!shipTo || s.shippedDate <= shipTo));
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       out = out.filter((s) => [s.clientName, s.comment, s.createdBy, ...s.items.map((i) => i.fuel)].some((v) => (v || "").toLowerCase().includes(q)));
     }
     return [...out].sort((a, b) => (b.saleDate || "").localeCompare(a.saleDate || "") || b.createdAt - a.createdAt);
-  }, [enriched, search, fuelFilter, managerFilter, onlyUnshipped, period, customFrom, customTo]);
+  }, [enriched, search, fuelFilter, managerFilter, onlyUnshipped, period, customFrom, customTo, shipFrom, shipTo]);
 
   const grandTotal = filtered.reduce((a, s) => a + toNum(s.sum), 0);
   const unshipped = useMemo(() => filtered.filter((s) => !s.shipped), [filtered]);
@@ -150,6 +155,20 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
             <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
           </div>
         )}
+      </div>
+
+      <div className="ps-toolbar ps-toolbar--period">
+        <div className="ps-period-range">
+          <span style={{ color: "#5B6770" }}>Дата отгрузки:</span>
+          <input type="date" value={shipFrom} onChange={(e) => setShipFrom(e.target.value)} />
+          <span>—</span>
+          <input type="date" value={shipTo} onChange={(e) => setShipTo(e.target.value)} />
+          {(shipFrom || shipTo) && (
+            <button type="button" className="ps-link-btn" onClick={() => { setShipFrom(""); setShipTo(""); }}>
+              <X size={12} /> Сбросить
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="ps-period-summary">

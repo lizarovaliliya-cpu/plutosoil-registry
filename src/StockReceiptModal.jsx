@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { X, Warehouse, Trash2 } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { toNum, fmtInt, toDbReceipt } from "./utils.js";
-import { FUELS } from "./shared.jsx";
+import { FUELS, DENSITY } from "./shared.jsx";
 
 const isoToday = () => {
   const d = new Date();
@@ -10,11 +10,11 @@ const isoToday = () => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
-export default function StockReceiptModal({ receipt, managerName, managers, locations, onClose }) {
+export default function StockReceiptModal({ receipt, managerName, managers, locations, prices, onClose }) {
   const isEdit = !!receipt;
   const [locationId, setLocationId] = useState(receipt?.locationId || (locations?.[0]?.id ?? ""));
   const [fuel, setFuel] = useState(receipt?.fuel || FUELS[0]);
-  const [volume, setVolume] = useState(receipt?.volume ?? "");
+  const [volume, setVolume] = useState(receipt?.volume ?? ""); // канонически всегда в литрах
   const [price, setPrice] = useState(receipt?.price ?? "");
   const [supplier, setSupplier] = useState(receipt?.supplier || "");
   const [receiptDate, setReceiptDate] = useState(receipt?.receiptDate || isoToday());
@@ -25,6 +25,13 @@ export default function StockReceiptModal({ receipt, managerName, managers, loca
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   const sum = toNum(price) * toNum(volume);
+
+  const density = toNum((prices || []).find((pr) => pr.fuel === fuel)?.density) || DENSITY[fuel] || 0;
+  const kgValue = density > 0 && volume !== "" ? +(toNum(volume) * density).toFixed(2) : "";
+  const handleKgChange = (v) => {
+    if (v === "" || density <= 0) { setVolume(""); return; }
+    setVolume(+(toNum(v) / density).toFixed(2));
+  };
 
   const save = async () => {
     if (!toNum(volume)) return;
@@ -77,10 +84,17 @@ export default function StockReceiptModal({ receipt, managerName, managers, loca
               {FUELS.map((f) => <option key={f} value={f}>{f}</option>)}
             </select>
           </label>
-          <label className="ps-field">
-            <span>Объём, л *</span>
-            <input type="number" min="0" step="1" value={volume} onChange={(e) => setVolume(e.target.value)} placeholder="0" />
-          </label>
+          <div className="ps-field-row">
+            <label className="ps-field">
+              <span>Объём, л *</span>
+              <input type="number" min="0" step="1" value={volume} onChange={(e) => setVolume(e.target.value)} placeholder="0" />
+            </label>
+            <label className="ps-field">
+              <span>Масса, кг</span>
+              <input type="number" min="0" step="0.01" value={kgValue} onChange={(e) => handleKgChange(e.target.value)}
+                placeholder={density > 0 ? "0" : "коэффициент не задан"} disabled={density <= 0} />
+            </label>
+          </div>
           <label className="ps-field">
             <span>Цена закупки, ₽/л</span>
             <input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Необязательно" />

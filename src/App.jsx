@@ -13,6 +13,7 @@ import Sidebar from "./Sidebar.jsx";
 import ClientsView from "./ClientsView.jsx";
 import SalesView from "./SalesView.jsx";
 import AnalyticsView from "./AnalyticsView.jsx";
+import ReportsView from "./ReportsView.jsx";
 import StockView from "./StockView.jsx";
 import SellModal from "./SellModal.jsx";
 import PricesModal from "./PricesModal.jsx";
@@ -525,7 +526,7 @@ export default function App() {
         <Sidebar view={view} setView={setView} />
         <div className="ps-main">
           <header className="ps-header">
-            <div className="ps-header__brand"><Fuel size={20} /><span>PlutosOil</span><span className="ps-header__sub">{{ clients: "Клиенты", sales: "Реестр сделок", stock: "Склад", analytics: "Аналитика" }[view]}</span></div>
+            <div className="ps-header__brand"><Fuel size={20} /><span>PlutosOil</span><span className="ps-header__sub">{{ clients: "Клиенты", sales: "Реестр сделок", stock: "Склад", analytics: "Аналитика", reports: "Отчёты" }[view]}</span></div>
             <div className="ps-header__presence">
               <Users size={14} />
               <div className="ps-avatars">
@@ -558,6 +559,8 @@ export default function App() {
             />
           ) : view === "analytics" ? (
             <AnalyticsView sales={sales} clients={clients} rows={rows} />
+          ) : view === "reports" ? (
+            <ReportsView sales={sales} clients={clients} locations={locations} prices={prices} />
           ) : (
             <ClientsView
               clients={clients} loaded={clientsLoaded} rows={rows} sales={sales} managerName={managerName}
@@ -584,7 +587,7 @@ export default function App() {
       )}
       {receiptModal && (
         <StockReceiptModal
-          receipt={receiptModal.receipt} managerName={managerName} managers={managers} locations={locations}
+          receipt={receiptModal.receipt} managerName={managerName} managers={managers} locations={locations} prices={prices}
           onClose={() => setReceiptModal(null)}
         />
       )}
