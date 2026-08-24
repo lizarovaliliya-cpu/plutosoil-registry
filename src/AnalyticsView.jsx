@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { TrendingUp, BarChart3, Fuel, Users, Wallet, ShoppingCart } from "lucide-react";
 import { fmtInt, toNum, colorForName } from "./utils.js";
-import { FUELS, STATUSES } from "./shared.jsx";
+import { FUELS, DENSITY, STATUSES } from "./shared.jsx";
 
 const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 const PAYMENT_METHODS = ["Наличные", "Безналичный", "Карта"];
@@ -37,7 +37,7 @@ function BarList({ rows }) {
   );
 }
 
-export default function AnalyticsView({ sales, clients, rows }) {
+export default function AnalyticsView({ sales, clients, rows, prices }) {
   const [period, setPeriod] = useState("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -63,6 +63,17 @@ export default function AnalyticsView({ sales, clients, rows }) {
   const dealsCount = filteredSales.length;
   const avgCheck = dealsCount ? totalSum / dealsCount : 0;
   const agentFeeTotal = filteredSales.reduce((a, s) => a + toNum(s.agentFee), 0);
+
+  const densityFor = (fuel) => toNum((prices || []).find((p) => p.fuel === fuel)?.density) || DENSITY[fuel] || 0;
+  const { totalVolume, totalTons } = useMemo(() => {
+    let volume = 0, tons = 0;
+    filteredSales.flatMap((s) => s.items || []).forEach((it) => {
+      const v = toNum(it.volume);
+      volume += v;
+      tons += (v * densityFor(it.fuel)) / 1000;
+    });
+    return { totalVolume: volume, totalTons: tons };
+  }, [filteredSales, prices]);
 
   const newClientsCount = useMemo(
     () => clients.filter((c) => c.createdAt && inRange(isoOf(new Date(c.createdAt)))).length,
@@ -163,6 +174,11 @@ export default function AnalyticsView({ sales, clients, rows }) {
         <div className="ps-kpi-card">
           <div className="ps-kpi-card__label">Сделок {periodLabel}</div>
           <div className="ps-kpi-card__value">{dealsCount}</div>
+        </div>
+        <div className="ps-kpi-card">
+          <div className="ps-kpi-card__label">Объём продаж {periodLabel}</div>
+          <div className="ps-kpi-card__value">{fmtInt(totalVolume)} л</div>
+          {totalTons > 0 && <div className="ps-price-row__meta">≈ {totalTons.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} т</div>}
         </div>
         <div className="ps-kpi-card">
           <div className="ps-kpi-card__label">Средний чек</div>

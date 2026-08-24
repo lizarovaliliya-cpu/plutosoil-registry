@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { Plus, Search, X, ShoppingCart, Download, CalendarRange } from "lucide-react";
 import * as XLSX from "xlsx";
 import { fmtInt, toNum, colorForName, todayStr } from "./utils.js";
-import { FUELS, CONTAINER_LABELS } from "./shared.jsx";
+import { FUELS, DENSITY, CONTAINER_LABELS } from "./shared.jsx";
 
 const WEEKDAYS = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
 const MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
@@ -31,7 +31,7 @@ const shortDate = (iso) => {
 const fuelSummary = (items) =>
   items.map((i) => `${i.fuel || "—"}${i.containerMode ? ` (${CONTAINER_LABELS[i.containerMode]})` : ""}`).join(", ");
 
-export default function SalesView({ sales, salesLoaded, clients, managerName, onOpenSell }) {
+export default function SalesView({ sales, salesLoaded, clients, managerName, prices, onOpenSell }) {
   const [search, setSearch] = useState("");
   const [fuelFilter, setFuelFilter] = useState(null);
   const [managerFilter, setManagerFilter] = useState("");
@@ -83,6 +83,17 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
   const unshipped = useMemo(() => filtered.filter((s) => !s.shipped), [filtered]);
   const unshippedSum = unshipped.reduce((a, s) => a + toNum(s.sum), 0);
   const agentFeeTotal = filtered.reduce((a, s) => a + toNum(s.agentFee), 0);
+
+  const densityFor = (fuel) => toNum((prices || []).find((p) => p.fuel === fuel)?.density) || DENSITY[fuel] || 0;
+  const { totalVolume, totalTons } = useMemo(() => {
+    let volume = 0, tons = 0;
+    filtered.forEach((s) => s.items.forEach((it) => {
+      const v = toNum(it.volume);
+      volume += v;
+      tons += (v * densityFor(it.fuel)) / 1000;
+    }));
+    return { totalVolume: volume, totalTons: tons };
+  }, [filtered, prices]);
 
   const periodLabel = period === "all" ? "За всё время"
     : period === "today" ? "За сегодня"
@@ -174,6 +185,8 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, on
       <div className="ps-period-summary">
         <span className="ps-period-summary__label">{periodLabel}</span>
         <span className="ps-period-summary__stat"><b>{filtered.length}</b> сделок</span>
+        <span className="ps-period-summary__divider" />
+        <span className="ps-period-summary__stat"><b>{fmtInt(totalVolume)}</b> л{totalTons > 0 ? ` · ≈${totalTons.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} т` : ""}</span>
         <span className="ps-period-summary__divider" />
         <span className="ps-period-summary__stat ps-period-summary__stat--sum"><b>{fmtInt(grandTotal)}</b> ₽ выручка</span>
         {unshipped.length > 0 && (

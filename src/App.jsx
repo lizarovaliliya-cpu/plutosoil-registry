@@ -545,7 +545,7 @@ export default function App() {
 
           {view === "sales" ? (
             <SalesView
-              sales={sales} salesLoaded={salesLoaded} clients={clients} managerName={managerName}
+              sales={sales} salesLoaded={salesLoaded} clients={clients} managerName={managerName} prices={prices}
               onOpenSell={(clientId, group) => setSellModal({ clientId, group })}
             />
           ) : view === "stock" ? (
@@ -558,7 +558,7 @@ export default function App() {
               onUpdateLocation={updateLocation}
             />
           ) : view === "analytics" ? (
-            <AnalyticsView sales={sales} clients={clients} rows={rows} />
+            <AnalyticsView sales={sales} clients={clients} rows={rows} prices={prices} />
           ) : view === "reports" ? (
             <ReportsView sales={sales} clients={clients} locations={locations} prices={prices} />
           ) : (
