@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { X, ShoppingCart, Trash2, Plus, Printer } from "lucide-react";
+import { X, ShoppingCart, Trash2, Plus, Printer, Users, ClipboardList, Fuel, Truck, Wallet, MessageSquare } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { toNum, fmtInt, toDbSale, toDbSaleGroup, genId } from "./utils.js";
 import { FUELS, DENSITY, SuggestDropdown, SOURCES } from "./shared.jsx";
@@ -314,9 +314,9 @@ export default function SellModal({ clients, managerName, managers, presetClient
           <button className="ps-mini" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="ps-drawer__body">
-          <div className="ps-field ps-field-full">
-            <div className="ps-field-head">
-              <span>Клиент *</span>
+          <div className="ps-sell-section">
+            <div className="ps-sell-section__title">
+              <span className="ps-sell-section__title-label"><Users size={13} /> Клиент</span>
               {!newClientMode && !(presetClientId && !isEdit) && (
                 <button type="button" className="ps-link-btn" onClick={() => setNewClientMode(true)}>
                   <Plus size={12} /> Новый клиент
@@ -362,82 +362,110 @@ export default function SellModal({ clients, managerName, managers, presetClient
               </div>
             )}
           </div>
-          <label className="ps-field">
-            <span>Менеджер</span>
-            <select value={createdBy} onChange={(e) => setCreatedBy(e.target.value)}>
-              <option value="">Не указан</option>
-              {createdBy && !(managers || []).includes(createdBy) && <option value={createdBy}>{createdBy}</option>}
-              {(managers || []).map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </label>
-          <label className="ps-field">
-            <span>Форма оплаты</span>
-            <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-              {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </label>
 
-          <div className="ps-field-head" style={{ marginTop: 4 }}>
-            <span style={{ fontWeight: 600, color: "var(--petrol)" }}>Позиции топлива</span>
-            <button type="button" className="ps-link-btn" onClick={addLine}><Plus size={12} /> Добавить топливо</button>
+          <div className="ps-sell-section">
+            <div className="ps-sell-section__title">
+              <span className="ps-sell-section__title-label"><ClipboardList size={13} /> Условия сделки</span>
+            </div>
+            <div className="ps-sell-section__grid">
+              <label className="ps-field">
+                <span>Менеджер</span>
+                <select value={createdBy} onChange={(e) => setCreatedBy(e.target.value)}>
+                  <option value="">Не указан</option>
+                  {createdBy && !(managers || []).includes(createdBy) && <option value={createdBy}>{createdBy}</option>}
+                  {(managers || []).map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </label>
+              <label className="ps-field">
+                <span>Форма оплаты</span>
+                <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                  {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </label>
+              <label className="ps-field">
+                <span>Дата продажи</span>
+                <input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} />
+              </label>
+              <label className="ps-field">
+                <span>Агентское вознаграждение, ₽</span>
+                <input type="number" min="0" step="1" value={agentFee} onChange={(e) => setAgentFee(e.target.value)} placeholder="0" />
+              </label>
+            </div>
           </div>
-          {lines.map((l) => (
-            <FuelLineRow
-              key={l.key} line={l} paymentMethod={paymentMethod} prices={prices} locations={locations}
-              onChange={(patch) => updateLine(l.key, patch)}
-              onRemove={() => removeLine(l.key)}
-              canRemove={lines.length > 1}
-            />
-          ))}
 
-          <div className="ps-field ps-field-full">
-            <span>Итого по сделке</span>
+          <div className="ps-sell-section">
+            <div className="ps-sell-section__title">
+              <span className="ps-sell-section__title-label"><Fuel size={13} /> Топливо</span>
+              <button type="button" className="ps-link-btn" onClick={addLine}><Plus size={12} /> Добавить топливо</button>
+            </div>
+            {lines.map((l) => (
+              <FuelLineRow
+                key={l.key} line={l} paymentMethod={paymentMethod} prices={prices} locations={locations}
+                onChange={(patch) => updateLine(l.key, patch)}
+                onRemove={() => removeLine(l.key)}
+                canRemove={lines.length > 1}
+              />
+            ))}
+          </div>
+
+          <div className="ps-sell-section ps-sell-section--accent">
+            <span style={{ fontSize: 12.5, color: "#5B6770" }}>Итого по сделке</span>
             <div className="ps-sell-sum">{fmtInt(totalSum)} ₽</div>
             {depositTotal > 0 && <div className="ps-sell-sum__breakdown">+ залог за тару {fmtInt(depositTotal)} ₽ (не входит в выручку)</div>}
             {toNum(agentFee) > 0 && <div className="ps-sell-sum__breakdown">− агентское вознаграждение {fmtInt(toNum(agentFee))} ₽ (не входит в выручку)</div>}
           </div>
-          <label className="ps-field">
-            <span>Агентское вознаграждение, ₽ (на всю сделку)</span>
-            <input type="number" min="0" step="1" value={agentFee} onChange={(e) => setAgentFee(e.target.value)} placeholder="0" />
-          </label>
-          <label className="ps-field">
-            <span>Дата продажи</span>
-            <input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} />
-          </label>
-          <label className="ps-field">
-            <span>Планируемая дата отгрузки</span>
-            <input type="date" value={plannedShipDate} onChange={(e) => setPlannedShipDate(e.target.value)} />
-          </label>
-          <label className="ps-check-field">
-            <input type="checkbox" checked={shipped} onChange={(e) => {
-              setShipped(e.target.checked);
-              if (e.target.checked && !shippedDate) setShippedDate(isoToday());
-            }} />
-            <span>Отгружено</span>
-          </label>
-          {shipped && (
+
+          <div className="ps-sell-section">
+            <div className="ps-sell-section__title">
+              <span className="ps-sell-section__title-label"><Truck size={13} /> Статус сделки</span>
+            </div>
+            <div className="ps-sell-section__grid">
+              <div className={`ps-status-block ${shipped ? "ps-status-block--on" : ""}`}>
+                <label className="ps-field">
+                  <span>Планируемая дата отгрузки</span>
+                  <input type="date" value={plannedShipDate} onChange={(e) => setPlannedShipDate(e.target.value)} />
+                </label>
+                <label className="ps-status-toggle">
+                  <input type="checkbox" checked={shipped} onChange={(e) => {
+                    setShipped(e.target.checked);
+                    if (e.target.checked && !shippedDate) setShippedDate(isoToday());
+                  }} />
+                  <Truck size={14} /> Отгружено
+                </label>
+                {shipped && (
+                  <label className="ps-field">
+                    <span>Дата отгрузки</span>
+                    <input type="date" value={shippedDate} onChange={(e) => setShippedDate(e.target.value)} />
+                  </label>
+                )}
+              </div>
+              <div className={`ps-status-block ${paid ? "ps-status-block--on" : ""}`}>
+                <label className="ps-status-toggle">
+                  <input type="checkbox" checked={paid} onChange={(e) => {
+                    setPaid(e.target.checked);
+                    if (e.target.checked && !paidDate) setPaidDate(isoToday());
+                  }} />
+                  <Wallet size={14} /> Оплачено
+                </label>
+                {paid && (
+                  <label className="ps-field">
+                    <span>Дата оплаты</span>
+                    <input type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
+                  </label>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="ps-sell-section">
+            <div className="ps-sell-section__title">
+              <span className="ps-sell-section__title-label"><MessageSquare size={13} /> Комментарий</span>
+            </div>
             <label className="ps-field">
-              <span>Дата отгрузки</span>
-              <input type="date" value={shippedDate} onChange={(e) => setShippedDate(e.target.value)} />
+              <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Необязательно" />
             </label>
-          )}
-          <label className="ps-check-field">
-            <input type="checkbox" checked={paid} onChange={(e) => {
-              setPaid(e.target.checked);
-              if (e.target.checked && !paidDate) setPaidDate(isoToday());
-            }} />
-            <span>Оплачено</span>
-          </label>
-          {paid && (
-            <label className="ps-field">
-              <span>Дата оплаты</span>
-              <input type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
-            </label>
-          )}
-          <label className="ps-field ps-field-full">
-            <span>Комментарий</span>
-            <textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Необязательно" />
-          </label>
+          </div>
+
           {error && <p style={{ color: "#C13B3B", fontSize: 12.5 }}>{error}</p>}
         </div>
         <div className="ps-drawer__foot">

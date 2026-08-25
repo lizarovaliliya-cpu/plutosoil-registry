@@ -751,6 +751,7 @@ function GlobalStyle() {
       .ps-modal__panel .ps-drawer__body { display:grid; grid-template-columns:1fr 1fr; align-content:start; gap:12px 18px; }
       .ps-modal__panel .ps-drawer__body > .ps-field-full,
       .ps-modal__panel .ps-drawer__body > .ps-fieldset,
+      .ps-modal__panel .ps-drawer__body > .ps-sell-section,
       .ps-modal__panel .ps-drawer__body > .ps-field-head,
       .ps-modal__panel .ps-drawer__body > p { grid-column: 1 / -1; }
       @media (max-width: 720px) { .ps-modal__panel .ps-drawer__body { grid-template-columns:1fr; } }
@@ -773,6 +774,18 @@ function GlobalStyle() {
       .ps-new-client__actions { display:flex; justify-content:flex-end; gap:8px; }
       .ps-check-field { display:flex; align-items:center; gap:8px; font-size:13.5px; color: var(--ink); cursor:pointer; }
       .ps-check-field input { width:16px; height:16px; cursor:pointer; }
+      .ps-sell-section { background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 18px; display:flex; flex-direction:column; gap:13px; }
+      .ps-sell-section > select { border:1px solid var(--line); border-radius:9px; padding:9px 11px; font-size:13.5px; font-family: var(--font-body); color: var(--ink); background: var(--panel); width:100%; }
+      .ps-sell-section > select:focus { outline:2px solid var(--petrol-2); outline-offset:1px; }
+      .ps-sell-section--accent { background: linear-gradient(135deg, #EAF3F8 0%, #F7F1E3 100%); border-color:#D8E6ED; }
+      .ps-sell-section__title { display:flex; align-items:center; justify-content:space-between; font-family: var(--font-display); font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color: var(--petrol-2); }
+      .ps-sell-section__title-label { display:flex; align-items:center; gap:7px; }
+      .ps-sell-section__grid { display:grid; grid-template-columns:1fr 1fr; gap:13px 16px; }
+      @media (max-width:560px) { .ps-sell-section__grid { grid-template-columns:1fr; } }
+      .ps-status-block { border:1px solid var(--line); border-radius:11px; padding:13px 14px; display:flex; flex-direction:column; gap:10px; background: var(--paper); transition: background 0.15s ease, border-color 0.15s ease; }
+      .ps-status-block--on { background:#E8F6EE; border-color:#B9E1C8; }
+      .ps-status-toggle { display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:600; color: var(--ink); cursor:pointer; }
+      .ps-status-toggle input { width:17px; height:17px; cursor:pointer; accent-color: var(--green); }
       .ps-price-row { border:1px solid var(--line); border-radius:12px; padding:12px 14px; background: var(--panel); display:flex; flex-direction:column; gap:8px; }
       .ps-price-row__fuel { font-family: var(--font-display); font-weight:600; font-size:13.5px; color: var(--petrol); }
       .ps-price-row__grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
