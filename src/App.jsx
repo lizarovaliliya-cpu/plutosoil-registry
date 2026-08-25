@@ -6,7 +6,7 @@ import { SEED_DATA } from "./seedData.js";
 import {
   genId, todayStr, toNum, fmtInt, timeAgo, colorForName,
   fromDbClient, toDbClient, fromDbSale, fromDbSaleGroup, buildSales, fromDbPrice, fromDbCompanyProfile, fromDbReceipt,
-  fromDbLocation, toDbLocation, fromDbTransfer, fromDbShipment,
+  fromDbLocation, toDbLocation, fromDbTransfer, fromDbShipment, fromDbVehicle, fromDbFuelLimit, fromDbFill,
 } from "./utils.js";
 import { FUELS, DENSITY } from "./shared.jsx";
 import Sidebar from "./Sidebar.jsx";
@@ -16,6 +16,7 @@ import AnalyticsView from "./AnalyticsView.jsx";
 import ShipmentsView from "./ShipmentsView.jsx";
 import ReportsView from "./ReportsView.jsx";
 import StockView from "./StockView.jsx";
+import FuelLimitsView from "./FuelLimitsView.jsx";
 import SellModal from "./SellModal.jsx";
 import PricesModal from "./PricesModal.jsx";
 import CompanyProfileModal from "./CompanyProfileModal.jsx";
@@ -79,6 +80,9 @@ export default function App() {
   const [transfersLoaded, setTransfersLoaded] = useState(false);
   const [shipments, setShipments] = useState([]);
   const [shipmentsLoaded, setShipmentsLoaded] = useState(false);
+  const [vehicles, setVehicles] = useState([]);
+  const [fuelLimits, setFuelLimits] = useState([]);
+  const [fills, setFills] = useState([]);
   const [sellModal, setSellModal] = useState(null); // { clientId } | null
   const [pricesModalOpen, setPricesModalOpen] = useState(false);
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
@@ -295,6 +299,69 @@ export default function App() {
             const incoming = fromDbShipment(payload.new);
             const exists = prev.some((s) => s.id === incoming.id);
             return exists ? prev.map((s) => (s.id === incoming.id ? incoming : s)) : [incoming, ...prev];
+          });
+        })
+        .subscribe();
+    })();
+    return () => { if (channel) supabase.removeChannel(channel); };
+  }, [session]);
+
+  /* ---- заправка по лимитам: справочник машин клиента — загрузка + realtime ---- */
+  useEffect(() => {
+    if (!session) { setVehicles([]); return; }
+    let channel;
+    (async () => {
+      const { data } = await supabase.from("client_vehicles").select("*").order("created_at", { ascending: true });
+      setVehicles((data || []).map(fromDbVehicle));
+      channel = supabase.channel("client-vehicles-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "client_vehicles" }, (payload) => {
+          setVehicles((prev) => {
+            if (payload.eventType === "DELETE") return prev.filter((v) => v.id !== payload.old.id);
+            const incoming = fromDbVehicle(payload.new);
+            const exists = prev.some((v) => v.id === incoming.id);
+            return exists ? prev.map((v) => (v.id === incoming.id ? incoming : v)) : [...prev, incoming];
+          });
+        })
+        .subscribe();
+    })();
+    return () => { if (channel) supabase.removeChannel(channel); };
+  }, [session]);
+
+  /* ---- заправка по лимитам: текущие лимиты — загрузка + realtime ---- */
+  useEffect(() => {
+    if (!session) { setFuelLimits([]); return; }
+    let channel;
+    (async () => {
+      const { data } = await supabase.from("fuel_limits").select("*");
+      setFuelLimits((data || []).map(fromDbFuelLimit));
+      channel = supabase.channel("fuel-limits-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "fuel_limits" }, (payload) => {
+          setFuelLimits((prev) => {
+            if (payload.eventType === "DELETE") return prev.filter((l) => l.id !== payload.old.id);
+            const incoming = fromDbFuelLimit(payload.new);
+            const exists = prev.some((l) => l.id === incoming.id);
+            return exists ? prev.map((l) => (l.id === incoming.id ? incoming : l)) : [...prev, incoming];
+          });
+        })
+        .subscribe();
+    })();
+    return () => { if (channel) supabase.removeChannel(channel); };
+  }, [session]);
+
+  /* ---- заправка по лимитам: журнал заправок — загрузка + realtime ---- */
+  useEffect(() => {
+    if (!session) { setFills([]); return; }
+    let channel;
+    (async () => {
+      const { data } = await supabase.from("fuel_limit_fills").select("*").order("fill_date", { ascending: false });
+      setFills((data || []).map(fromDbFill));
+      channel = supabase.channel("fuel-limit-fills-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "fuel_limit_fills" }, (payload) => {
+          setFills((prev) => {
+            if (payload.eventType === "DELETE") return prev.filter((f) => f.id !== payload.old.id);
+            const incoming = fromDbFill(payload.new);
+            const exists = prev.some((f) => f.id === incoming.id);
+            return exists ? prev.map((f) => (f.id === incoming.id ? incoming : f)) : [incoming, ...prev];
           });
         })
         .subscribe();
@@ -553,7 +620,7 @@ export default function App() {
         <Sidebar view={view} setView={setView} />
         <div className="ps-main">
           <header className="ps-header">
-            <div className="ps-header__brand"><Fuel size={20} /><span>PlutosOil</span><span className="ps-header__sub">{{ clients: "Клиенты", sales: "Реестр сделок", stock: "Склад", analytics: "Аналитика", shipments: "Отгрузки", reports: "Отчёты" }[view]}</span></div>
+            <div className="ps-header__brand"><Fuel size={20} /><span>PlutosOil</span><span className="ps-header__sub">{{ clients: "Клиенты", sales: "Реестр сделок", stock: "Склад", analytics: "Аналитика", shipments: "Отгрузки", reports: "Отчёты", limits: "Заправка по лимитам" }[view]}</span></div>
             <div className="ps-header__presence">
               <Users size={14} />
               <div className="ps-avatars">
@@ -595,6 +662,11 @@ export default function App() {
             />
           ) : view === "reports" ? (
             <ReportsView sales={sales} clients={clients} locations={locations} prices={prices} managers={managers} />
+          ) : view === "limits" ? (
+            <FuelLimitsView
+              clients={clients} vehicles={vehicles} fuelLimits={fuelLimits} fills={fills} prices={prices}
+              companyProfile={companyProfile} managerName={managerName} managers={managers}
+            />
           ) : (
             <ClientsView
               clients={clients} loaded={clientsLoaded} rows={rows} sales={sales} managerName={managerName}
@@ -813,6 +885,16 @@ function GlobalStyle() {
       .ps-ship-btn { border:none; background:transparent; color: var(--petrol-2); font-size:10.5px; font-weight:600; cursor:pointer; padding:2px 0; display:flex; align-items:center; gap:3px; }
       .ps-ship-btn:hover { text-decoration:underline; }
       .ps-shipment-row { display:grid; grid-template-columns: 18px 1fr 1.6fr 1fr 1fr auto auto; gap:8px; align-items:center; background: var(--panel); border:1px solid var(--line); border-radius:9px; padding:8px 10px; font-size:12.5px; }
+      .ps-limits { display:flex; gap:20px; align-items:flex-start; padding:16px 22px 24px; }
+      .ps-limits__side { width:300px; flex-shrink:0; display:flex; flex-direction:column; }
+      .ps-limits__main { flex:1; min-width:0; display:flex; flex-direction:column; gap:14px; }
+      .ps-limits__searchresults { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background: var(--panel); padding:5px; }
+      .ps-limits__list { display:flex; flex-direction:column; gap:5px; max-height:calc(100vh - 280px); overflow:auto; }
+      .ps-limits__client-row { display:flex; flex-direction:column; align-items:flex-start; gap:2px; border:1px solid var(--line); background: var(--panel); border-radius:10px; padding:9px 11px; text-align:left; cursor:pointer; font-family: var(--font-body); font-size:13px; color: var(--ink); width:100%; }
+      .ps-limits__client-row:hover { border-color: var(--petrol-2); }
+      .ps-limits__client-row--on { border-color: var(--petrol-2); background:#EAF3F8; }
+      .ps-limits__client-meta { font-size:11px; color:#8A94A0; }
+      .ps-limits__gauges { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; }
       .ps-cal-title { font-family: var(--font-display); font-weight:600; font-size:13.5px; }
       .ps-cal-title--overdue { color: var(--red); }
       .ps-cal-title--nodate { color: var(--amber); }

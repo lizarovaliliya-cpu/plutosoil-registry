@@ -1,5 +1,5 @@
 import React from "react";
-import { Fuel, Building2, CalendarDays, BarChart3, Warehouse, FileSpreadsheet, Truck } from "lucide-react";
+import { Fuel, Building2, CalendarDays, BarChart3, Warehouse, FileSpreadsheet, Truck, Gauge } from "lucide-react";
 
 const ITEMS = [
   { key: "clients", label: "Клиенты", icon: Building2 },
@@ -7,6 +7,7 @@ const ITEMS = [
   { key: "stock", label: "Склад", icon: Warehouse },
   { key: "analytics", label: "Аналитика", icon: BarChart3 },
   { key: "shipments", label: "Отгрузки", icon: Truck },
+  { key: "limits", label: "Заправка по лимитам", icon: Gauge },
   { key: "reports", label: "Отчёты", icon: FileSpreadsheet },
 ];
 

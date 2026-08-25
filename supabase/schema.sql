@@ -502,3 +502,122 @@ end $$;
 -- остался неотгруженный объём.
 -- ============================================================
 alter table sale_groups add column if not exists planned_ship_date date;
+
+-- ============================================================
+-- Заправка по лимитам (этап 16): отдельный от обычных продаж
+-- механизм — компания-клиент получает лимит (квоту) литров на
+-- каждый вид топлива, и её машины заправляются по мере приезда,
+-- списывая литры с этого лимита, а не через разовую сделку с
+-- фиксированным объёмом. client_vehicles — справочник машин
+-- клиента (переиспользуется во всех его заправках). fuel_limits —
+-- текущий выставленный лимит по каждому виду топлива на клиента
+-- (остаток = лимит минус сумма заправок этого вида топлива по
+-- fuel_limit_fills). fuel_limit_fills — журнал фактических
+-- заправок (одна строка = одна машина в одном приезде), из
+-- которого печатаются накладные.
+-- ============================================================
+create table if not exists client_vehicles (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid references clients(id) on delete cascade,
+  plate text not null default '',
+  model text default '',
+  phone text default '',
+  note text default '',
+  created_by text default '',
+  created_at timestamptz default now()
+);
+
+alter table client_vehicles enable row level security;
+
+drop policy if exists "authenticated read" on client_vehicles;
+create policy "authenticated read" on client_vehicles for select to authenticated using (true);
+
+drop policy if exists "authenticated insert" on client_vehicles;
+create policy "authenticated insert" on client_vehicles for insert to authenticated with check (true);
+
+drop policy if exists "authenticated update" on client_vehicles;
+create policy "authenticated update" on client_vehicles for update to authenticated using (true);
+
+drop policy if exists "authenticated delete" on client_vehicles;
+create policy "authenticated delete" on client_vehicles for delete to authenticated using (true);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'client_vehicles'
+  ) then
+    alter publication supabase_realtime add table client_vehicles;
+  end if;
+end $$;
+
+create table if not exists fuel_limits (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid references clients(id) on delete cascade,
+  fuel text not null default '',
+  limit_volume numeric default 0,
+  updated_by text default '',
+  updated_at timestamptz default now(),
+  unique (client_id, fuel)
+);
+
+alter table fuel_limits enable row level security;
+
+drop policy if exists "authenticated read" on fuel_limits;
+create policy "authenticated read" on fuel_limits for select to authenticated using (true);
+
+drop policy if exists "authenticated insert" on fuel_limits;
+create policy "authenticated insert" on fuel_limits for insert to authenticated with check (true);
+
+drop policy if exists "authenticated update" on fuel_limits;
+create policy "authenticated update" on fuel_limits for update to authenticated using (true);
+
+drop policy if exists "authenticated delete" on fuel_limits;
+create policy "authenticated delete" on fuel_limits for delete to authenticated using (true);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'fuel_limits'
+  ) then
+    alter publication supabase_realtime add table fuel_limits;
+  end if;
+end $$;
+
+create table if not exists fuel_limit_fills (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid references clients(id) on delete cascade,
+  vehicle_id uuid references client_vehicles(id) on delete set null,
+  vehicle_plate text default '',
+  driver text default '',
+  fuel text default '',
+  volume numeric,
+  price numeric,
+  sum numeric,
+  fill_date date default current_date,
+  comment text default '',
+  created_by text default '',
+  created_at timestamptz default now()
+);
+
+alter table fuel_limit_fills enable row level security;
+
+drop policy if exists "authenticated read" on fuel_limit_fills;
+create policy "authenticated read" on fuel_limit_fills for select to authenticated using (true);
+
+drop policy if exists "authenticated insert" on fuel_limit_fills;
+create policy "authenticated insert" on fuel_limit_fills for insert to authenticated with check (true);
+
+drop policy if exists "authenticated update" on fuel_limit_fills;
+create policy "authenticated update" on fuel_limit_fills for update to authenticated using (true);
+
+drop policy if exists "authenticated delete" on fuel_limit_fills;
+create policy "authenticated delete" on fuel_limit_fills for delete to authenticated using (true);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'fuel_limit_fills'
+  ) then
+    alter publication supabase_realtime add table fuel_limit_fills;
+  end if;
+end $$;

@@ -115,6 +115,38 @@ export const toDbLocation = (l) => ({
   name: l.name, type: l.type || "warehouse", address: l.address || "", created_by: l.createdBy,
 });
 
+/* ---- заправка по лимитам: справочник машин клиента ---- */
+export const fromDbVehicle = (v) => ({
+  id: v.id, clientId: v.client_id, plate: v.plate || "", model: v.model || "",
+  phone: v.phone || "", note: v.note || "", createdBy: v.created_by || "",
+  createdAt: v.created_at ? new Date(v.created_at).getTime() : 0,
+});
+
+export const toDbVehicle = (v) => ({
+  client_id: v.clientId, plate: v.plate || "", model: v.model || "",
+  phone: v.phone || "", note: v.note || "", created_by: v.createdBy,
+});
+
+/* ---- заправка по лимитам: текущий лимит клиента по виду топлива ---- */
+export const fromDbFuelLimit = (l) => ({
+  id: l.id, clientId: l.client_id, fuel: l.fuel || "", limitVolume: l.limit_volume ?? 0,
+  updatedBy: l.updated_by || "", updatedAt: l.updated_at ? new Date(l.updated_at).getTime() : 0,
+});
+
+/* ---- заправка по лимитам: журнал заправок (списаний с лимита) ---- */
+export const fromDbFill = (f) => ({
+  id: f.id, clientId: f.client_id, vehicleId: f.vehicle_id || "", vehiclePlate: f.vehicle_plate || "",
+  driver: f.driver || "", fuel: f.fuel || "", volume: f.volume ?? "", price: f.price ?? "", sum: f.sum ?? "",
+  fillDate: f.fill_date || "", comment: f.comment || "", createdBy: f.created_by || "",
+  createdAt: f.created_at ? new Date(f.created_at).getTime() : 0,
+});
+
+export const toDbFill = (f) => ({
+  client_id: f.clientId, vehicle_id: f.vehicleId || null, vehicle_plate: f.vehiclePlate || "",
+  driver: f.driver || "", fuel: f.fuel, volume: toNum(f.volume), price: toNum(f.price), sum: toNum(f.sum),
+  fill_date: f.fillDate, comment: f.comment || "", created_by: f.createdBy,
+});
+
 /* ---- перемещение топлива между точками ---- */
 export const fromDbTransfer = (t) => ({
   id: t.id, fromLocationId: t.from_location_id || "", toLocationId: t.to_location_id || "",
