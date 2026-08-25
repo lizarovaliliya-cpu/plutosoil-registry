@@ -795,14 +795,14 @@ function GlobalStyle() {
       .ps-cal-title--nodate { color: var(--amber); }
       .ps-cal-title--today { color: var(--petrol-2); }
       .ps-cal-title--future { color: var(--petrol); }
-      .ps-cal-widget { background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:18px; }
-      .ps-cal-widget__head { display:flex; align-items:center; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
-      .ps-cal-widget__title { font-family: var(--font-display); font-weight:600; font-size:14px; color: var(--petrol); min-width:150px; text-align:center; }
-      .ps-cal-legend { display:flex; gap:14px; margin-bottom:10px; font-size:11px; color:#5B6770; }
-      .ps-cal-legend i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px; vertical-align:-1px; }
-      .ps-cal-grid { display:grid; grid-template-columns: repeat(7, 1fr); gap:5px; }
-      .ps-cal-grid__wd { text-align:center; font-size:10.5px; color:#8A94A0; font-weight:600; padding-bottom:2px; }
-      .ps-cal-cell { position:relative; overflow:hidden; min-height:92px; border:1px solid var(--line); border-radius:8px; background: var(--paper); padding:0; font-family: var(--font-body); }
+      .ps-cal-widget { background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin-bottom:18px; }
+      .ps-cal-widget__head { display:flex; align-items:center; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+      .ps-cal-widget__title { font-family: var(--font-display); font-weight:600; font-size:17px; color: var(--petrol); min-width:170px; text-align:center; }
+      .ps-cal-legend { display:flex; gap:18px; margin-bottom:12px; font-size:13px; color:#5B6770; }
+      .ps-cal-legend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:-1.5px; }
+      .ps-cal-grid { display:grid; grid-template-columns: repeat(7, 1fr); gap:6px; }
+      .ps-cal-grid__wd { text-align:center; font-size:12px; color:#8A94A0; font-weight:600; padding-bottom:4px; }
+      .ps-cal-cell { position:relative; overflow:hidden; min-height:124px; border:1px solid var(--line); border-radius:9px; background: var(--paper); padding:0; font-family: var(--font-body); }
       .ps-cal-cell--empty { border-color:transparent; background:transparent; }
       button.ps-cal-cell { cursor:pointer; }
       button.ps-cal-cell:disabled { cursor:default; }
@@ -810,11 +810,11 @@ function GlobalStyle() {
       .ps-cal-cell--today { border:2px solid var(--petrol-2); }
       .ps-cal-cell--selected { outline:2px solid var(--petrol); outline-offset:-2px; }
       .ps-cal-cell__fill { position:absolute; left:0; right:0; bottom:0; z-index:0; opacity:0.5; transition: height 0.2s ease; }
-      .ps-cal-cell__content { position:relative; z-index:1; display:flex; flex-direction:column; gap:4px; padding:6px 7px; height:100%; }
+      .ps-cal-cell__content { position:relative; z-index:1; display:flex; flex-direction:column; gap:6px; padding:9px 10px; height:100%; }
       .ps-cal-cell__top { display:flex; align-items:center; justify-content:space-between; width:100%; }
-      .ps-cal-cell__num { font-size:11.5px; font-weight:600; color: var(--ink); }
-      .ps-cal-cell__count { font-size:9px; font-weight:700; color:#fff; border-radius:8px; padding:1px 5px; line-height:1.4; }
-      .ps-cal-cell__stat { font-size:8.5px; color: var(--ink); font-family: var(--font-mono); font-weight:600; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .ps-cal-cell__num { font-size:15px; font-weight:700; color: var(--ink); }
+      .ps-cal-cell__count { font-size:11.5px; font-weight:700; color:#fff; border-radius:9px; padding:2px 7px; line-height:1.4; }
+      .ps-cal-cell__stat { font-size:12px; color: var(--ink); font-family: var(--font-mono); font-weight:700; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
       .ps-period-summary__divider { width:1px; height:20px; background:rgba(255,255,255,0.2); }
       .ps-history__row-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
       .ps-req-toggle { display:flex; align-items:center; gap:6px; border:none; background:transparent; color: var(--petrol-2); font-size:12.5px; font-weight:600; cursor:pointer; padding:4px 0; align-self:flex-start; }
