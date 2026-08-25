@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { X, ShoppingCart, Trash2, Plus, Printer, Users, ClipboardList, Fuel, Truck, Wallet, MessageSquare } from "lucide-react";
+import { X, ShoppingCart, Trash2, Plus, Printer, Users, ClipboardList, Fuel, Truck, Wallet, MessageSquare, Search } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { toNum, fmtInt, toDbSale, toDbSaleGroup, genId } from "./utils.js";
 import { FUELS, DENSITY, SuggestDropdown, SOURCES } from "./shared.jsx";
@@ -156,7 +156,9 @@ function FuelLineRow({ line, paymentMethod, prices, locations, onChange, onRemov
 export default function SellModal({ clients, managerName, managers, presetClientId, group, prices, companyProfile, locations, onCreateClient, onClose }) {
   const isEdit = !!group;
   const sortedClients = useMemo(() => [...clients].sort((a, b) => a.company.localeCompare(b.company, "ru")), [clients]);
-  const [clientId, setClientId] = useState(group?.clientId || presetClientId || (sortedClients[0]?.id ?? ""));
+  const [clientId, setClientId] = useState(group?.clientId || presetClientId || "");
+  const [clientQuery, setClientQuery] = useState(() => clients.find((c) => c.id === (group?.clientId || presetClientId))?.company || "");
+  const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
   const [createdBy, setCreatedBy] = useState(group?.createdBy || managerName || "");
   const [newClientMode, setNewClientMode] = useState(false);
   const [newCompany, setNewCompany] = useState("");
@@ -254,6 +256,14 @@ export default function SellModal({ clients, managerName, managers, presetClient
     return clients.filter((c) => [c.company, c.contactName, c.phone].some((v) => (v || "").toLowerCase().includes(q))).slice(0, 6);
   };
 
+  const clientSearchResults = useMemo(() => {
+    const q = clientQuery.trim().toLowerCase();
+    const pool = q
+      ? sortedClients.filter((c) => [c.company, c.contactName, c.phone].some((v) => (v || "").toLowerCase().includes(q)))
+      : sortedClients;
+    return pool.slice(0, 40);
+  }, [clientQuery, sortedClients]);
+
   const cancelNewClient = () => {
     setNewClientMode(false);
     setNewCompany(""); setNewContact(""); setNewPhone(""); setNewSource(""); setSuggestField(null);
@@ -261,6 +271,8 @@ export default function SellModal({ clients, managerName, managers, presetClient
 
   const pickExistingClient = (c) => {
     setClientId(c.id);
+    setClientQuery(c.company);
+    setClientDropdownOpen(false);
     cancelNewClient();
   };
 
@@ -275,6 +287,7 @@ export default function SellModal({ clients, managerName, managers, presetClient
     setCreatingClient(false);
     if (created) {
       setClientId(created.id);
+      setClientQuery(created.company);
       cancelNewClient();
     }
   };
@@ -324,10 +337,25 @@ export default function SellModal({ clients, managerName, managers, presetClient
               )}
             </div>
             {!newClientMode ? (
-              <select value={clientId} onChange={(e) => setClientId(e.target.value)} disabled={!!presetClientId && !isEdit}>
-                {sortedClients.length === 0 && <option value="">Нет клиентов — сначала добавьте карточку</option>}
-                {sortedClients.map((c) => <option key={c.id} value={c.id}>{c.company}</option>)}
-              </select>
+              <div style={{ position: "relative" }}>
+                <div className="ps-search ps-search--field">
+                  <Search size={14} />
+                  <input
+                    value={clientQuery}
+                    disabled={!!presetClientId && !isEdit}
+                    placeholder={sortedClients.length === 0 ? "Нет клиентов — сначала добавьте карточку" : "Поиск: компания, контакт, телефон…"}
+                    onChange={(e) => { setClientQuery(e.target.value); setClientId(""); setClientDropdownOpen(true); }}
+                    onFocus={(e) => { setClientDropdownOpen(true); e.target.select(); }}
+                    onBlur={() => setTimeout(() => setClientDropdownOpen(false), 150)}
+                  />
+                  {clientQuery && !(presetClientId && !isEdit) && (
+                    <X size={14} className="ps-search__clear" onClick={() => { setClientQuery(""); setClientId(""); setClientDropdownOpen(true); }} />
+                  )}
+                </div>
+                {clientDropdownOpen && !(presetClientId && !isEdit) && (
+                  <SuggestDropdown items={clientSearchResults} onPick={pickExistingClient} hint={null} emptyText="Никого не нашлось" />
+                )}
+              </div>
             ) : (
               <div className="ps-new-client">
                 <div style={{ position: "relative" }}>

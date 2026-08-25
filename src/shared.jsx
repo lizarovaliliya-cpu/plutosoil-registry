@@ -50,11 +50,14 @@ export function Cell({ value, onCommit, type = "text", options, align, mono, pla
   );
 }
 
-export function SuggestDropdown({ items, onPick }) {
-  if (items.length === 0) return null;
+export function SuggestDropdown({ items, onPick, hint = "Похоже, уже есть в базе:", emptyText }) {
+  if (items.length === 0) {
+    if (!emptyText) return null;
+    return <div className="ps-suggest"><div className="ps-suggest__hint">{emptyText}</div></div>;
+  }
   return (
     <div className="ps-suggest">
-      <div className="ps-suggest__hint">Похоже, уже есть в базе:</div>
+      {hint && <div className="ps-suggest__hint">{hint}</div>}
       {items.map((c) => (
         <button key={c.id} type="button" className="ps-suggest__item" onMouseDown={(e) => { e.preventDefault(); onPick(c); }}>
           <span className="ps-suggest__company">{c.company || "Без названия"}</span>

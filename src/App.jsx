@@ -706,6 +706,9 @@ function GlobalStyle() {
       .ps-search { display:flex; align-items:center; gap:7px; background: var(--panel); border:1px solid var(--line); border-radius:9px; padding:8px 12px; min-width:260px; color:#6B7680; }
       .ps-search input { border:none; outline:none; font-size:13px; flex:1; background:transparent; color: var(--ink); }
       .ps-search__clear { cursor:pointer; }
+      .ps-search--field { width:100%; min-width:0; }
+      .ps-search--field:focus-within { outline:2px solid var(--petrol-2); outline-offset:1px; }
+      .ps-search--field input:disabled { color:#8A94A0; }
       .ps-chips { display:flex; gap:6px; flex-wrap:wrap; }
       .ps-chip { border:1px solid var(--line); background: var(--panel); border-radius:20px; padding:6px 12px; font-size:12px; cursor:pointer; color:#5B6770; }
       .ps-chip--on { background: var(--petrol); border-color: var(--petrol); color:#fff; }
