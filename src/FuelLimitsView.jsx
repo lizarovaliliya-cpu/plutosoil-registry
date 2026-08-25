@@ -19,7 +19,7 @@ const shortDate = (iso) => {
   return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}`;
 };
 
-export default function FuelLimitsView({ clients, vehicles, fuelLimits, fills, prices, companyProfile, managerName, managers }) {
+export default function FuelLimitsView({ clients, vehicles, fuelLimits, vehicleFuelLimits, fills, prices, companyProfile, managerName, managers }) {
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [clientQuery, setClientQuery] = useState("");
 
@@ -29,6 +29,7 @@ export default function FuelLimitsView({ clients, vehicles, fuelLimits, fills, p
   const [newNote, setNewNote] = useState("");
   const [savingVehicle, setSavingVehicle] = useState(false);
   const [vehicleDeleteConfirm, setVehicleDeleteConfirm] = useState(null);
+  const [expandedVehicleId, setExpandedVehicleId] = useState(null);
 
   const [fillFuel, setFillFuel] = useState(FUELS[0]);
   const [fillVolume, setFillVolume] = useState("");
@@ -81,6 +82,7 @@ export default function FuelLimitsView({ clients, vehicles, fuelLimits, fills, p
     setSelectedFills(new Set());
     setFillDeleteConfirm(null);
     setVehicleDeleteConfirm(null);
+    setExpandedVehicleId(null);
     const firstOpen = FUELS.find((f) => {
       const l = (fuelLimits || []).find((x) => x.clientId === id && x.fuel === f);
       return !l || toNum(l.limitVolume) === 0;
@@ -96,6 +98,20 @@ export default function FuelLimitsView({ clients, vehicles, fuelLimits, fills, p
       { onConflict: "client_id,fuel" }
     );
   };
+
+  const updateVehicleLimit = async (vehicleId, fuel, value) => {
+    await supabase.from("vehicle_fuel_limits").upsert(
+      { vehicle_id: vehicleId, fuel, limit_volume: toNum(value), updated_by: managerName || "Гость" },
+      { onConflict: "vehicle_id,fuel" }
+    );
+  };
+
+  const vehicleFuelStats = (vehicleId) => FUELS.map((fuel) => {
+    const limitRow = (vehicleFuelLimits || []).find((l) => l.vehicleId === vehicleId && l.fuel === fuel);
+    const limit = toNum(limitRow?.limitVolume);
+    const consumed = clientFills.filter((f) => f.vehicleId === vehicleId && f.fuel === fuel).reduce((a, f) => a + toNum(f.volume), 0);
+    return { fuel, limit, consumed, remaining: Math.max(0, limit - consumed) };
+  });
 
   const addVehicle = async () => {
     if (!newPlate.trim() || !selectedClientId) return;
@@ -155,6 +171,10 @@ export default function FuelLimitsView({ clients, vehicles, fuelLimits, fills, p
   };
 
   const remainingForFuel = fuelStats.find((f) => f.fuel === fillFuel)?.remaining || 0;
+  const matchedFillVehicle = clientVehicles.find((v) => v.plate.trim().toLowerCase() === fillPlate.trim().toLowerCase());
+  const matchedVehicleLimit = matchedFillVehicle
+    ? vehicleFuelStats(matchedFillVehicle.id).find((s) => s.fuel === fillFuel)
+    : null;
 
   return (
     <div className="ps-limits">
@@ -232,17 +252,36 @@ export default function FuelLimitsView({ clients, vehicles, fuelLimits, fills, p
               </div>
               {clientVehicles.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {clientVehicles.map((v) => (
-                    <div key={v.id} className="ps-shipment-row" style={{ gridTemplateColumns: "1fr 1.3fr 1fr 1.3fr auto" }}>
-                      <span><b>{v.plate}</b></span>
-                      <span>{v.model || "—"}</span>
-                      <span>{v.phone || "—"}</span>
-                      <span style={{ color: "#8A94A0" }}>{v.note || ""}</span>
-                      <button type="button" className={`ps-mini ${vehicleDeleteConfirm === v.id ? "ps-del--confirm" : ""}`} onClick={() => removeVehicle(v)} title="Удалить">
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  ))}
+                  {clientVehicles.map((v) => {
+                    const vStats = vehicleFuelStats(v.id);
+                    const vHasLimits = vStats.some((s) => s.limit > 0);
+                    return (
+                      <div key={v.id}>
+                        <div className="ps-shipment-row" style={{ gridTemplateColumns: "1fr 1.3fr 1fr 1.3fr auto auto" }}>
+                          <span><b>{v.plate}</b></span>
+                          <span>{v.model || "—"}</span>
+                          <span>{v.phone || "—"}</span>
+                          <span style={{ color: "#8A94A0" }}>{v.note || ""}</span>
+                          <button type="button" className="ps-ship-btn" onClick={() => setExpandedVehicleId((id) => (id === v.id ? null : v.id))}>
+                            <Gauge size={12} /> Лимиты{vHasLimits ? "" : " —"}
+                          </button>
+                          <button type="button" className={`ps-mini ${vehicleDeleteConfirm === v.id ? "ps-del--confirm" : ""}`} onClick={() => removeVehicle(v)} title="Удалить">
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                        {expandedVehicleId === v.id && (
+                          <div className="ps-limits__vehicle-limits">
+                            {vStats.map((s) => (
+                              <label key={s.fuel} className="ps-field">
+                                <span>{s.fuel}, л{s.limit > 0 ? ` (остаток ${fmtInt(s.remaining)})` : ""}</span>
+                                <Cell value={s.limit || ""} onCommit={(val) => updateVehicleLimit(v.id, s.fuel, val)} type="number" placeholder="без лимита" />
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               <div className="ps-sell-section__grid">
@@ -283,6 +322,9 @@ export default function FuelLimitsView({ clients, vehicles, fuelLimits, fills, p
                   <span>Объём, л *</span>
                   <input type="number" min="0" step="1" value={fillVolume} onChange={(e) => setFillVolume(e.target.value)}
                     placeholder={remainingForFuel > 0 ? String(Math.round(remainingForFuel)) : "0"} />
+                  {matchedVehicleLimit && matchedVehicleLimit.limit > 0 && (
+                    <div className="ps-sell-sum__breakdown">лимит машины: остаток {fmtInt(matchedVehicleLimit.remaining)} из {fmtInt(matchedVehicleLimit.limit)} л</div>
+                  )}
                 </label>
                 <label className="ps-field">
                   <span>Гос. номер машины *</span>

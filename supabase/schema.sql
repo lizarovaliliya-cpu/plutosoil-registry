@@ -621,3 +621,45 @@ begin
     alter publication supabase_realtime add table fuel_limit_fills;
   end if;
 end $$;
+
+-- ============================================================
+-- Лимит на конкретный автомобиль (этап 17): помимо общего лимита
+-- компании (fuel_limits, по клиенту), можно ограничить и отдельную
+-- машину — например, у компании лимит 5000 л ДТ на всех, но одна
+-- конкретная машина не должна брать больше 200 л за раз/период.
+-- Отдельная таблица (а не просто nullable vehicle_id в fuel_limits)
+-- — чтобы не городить частичные уникальные индексы для двух разных
+-- смыслов "лимит на клиента" и "лимит на машину" в одной таблице.
+-- ============================================================
+create table if not exists vehicle_fuel_limits (
+  id uuid primary key default gen_random_uuid(),
+  vehicle_id uuid references client_vehicles(id) on delete cascade,
+  fuel text not null default '',
+  limit_volume numeric default 0,
+  updated_by text default '',
+  updated_at timestamptz default now(),
+  unique (vehicle_id, fuel)
+);
+
+alter table vehicle_fuel_limits enable row level security;
+
+drop policy if exists "authenticated read" on vehicle_fuel_limits;
+create policy "authenticated read" on vehicle_fuel_limits for select to authenticated using (true);
+
+drop policy if exists "authenticated insert" on vehicle_fuel_limits;
+create policy "authenticated insert" on vehicle_fuel_limits for insert to authenticated with check (true);
+
+drop policy if exists "authenticated update" on vehicle_fuel_limits;
+create policy "authenticated update" on vehicle_fuel_limits for update to authenticated using (true);
+
+drop policy if exists "authenticated delete" on vehicle_fuel_limits;
+create policy "authenticated delete" on vehicle_fuel_limits for delete to authenticated using (true);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'vehicle_fuel_limits'
+  ) then
+    alter publication supabase_realtime add table vehicle_fuel_limits;
+  end if;
+end $$;

@@ -6,7 +6,7 @@ import { SEED_DATA } from "./seedData.js";
 import {
   genId, todayStr, toNum, fmtInt, timeAgo, colorForName,
   fromDbClient, toDbClient, fromDbSale, fromDbSaleGroup, buildSales, fromDbPrice, fromDbCompanyProfile, fromDbReceipt,
-  fromDbLocation, toDbLocation, fromDbTransfer, fromDbShipment, fromDbVehicle, fromDbFuelLimit, fromDbFill,
+  fromDbLocation, toDbLocation, fromDbTransfer, fromDbShipment, fromDbVehicle, fromDbFuelLimit, fromDbVehicleFuelLimit, fromDbFill,
 } from "./utils.js";
 import { FUELS, DENSITY } from "./shared.jsx";
 import Sidebar from "./Sidebar.jsx";
@@ -82,6 +82,7 @@ export default function App() {
   const [shipmentsLoaded, setShipmentsLoaded] = useState(false);
   const [vehicles, setVehicles] = useState([]);
   const [fuelLimits, setFuelLimits] = useState([]);
+  const [vehicleFuelLimits, setVehicleFuelLimits] = useState([]);
   const [fills, setFills] = useState([]);
   const [sellModal, setSellModal] = useState(null); // { clientId } | null
   const [pricesModalOpen, setPricesModalOpen] = useState(false);
@@ -339,6 +340,27 @@ export default function App() {
           setFuelLimits((prev) => {
             if (payload.eventType === "DELETE") return prev.filter((l) => l.id !== payload.old.id);
             const incoming = fromDbFuelLimit(payload.new);
+            const exists = prev.some((l) => l.id === incoming.id);
+            return exists ? prev.map((l) => (l.id === incoming.id ? incoming : l)) : [...prev, incoming];
+          });
+        })
+        .subscribe();
+    })();
+    return () => { if (channel) supabase.removeChannel(channel); };
+  }, [session]);
+
+  /* ---- заправка по лимитам: лимиты на конкретную машину — загрузка + realtime ---- */
+  useEffect(() => {
+    if (!session) { setVehicleFuelLimits([]); return; }
+    let channel;
+    (async () => {
+      const { data } = await supabase.from("vehicle_fuel_limits").select("*");
+      setVehicleFuelLimits((data || []).map(fromDbVehicleFuelLimit));
+      channel = supabase.channel("vehicle-fuel-limits-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "vehicle_fuel_limits" }, (payload) => {
+          setVehicleFuelLimits((prev) => {
+            if (payload.eventType === "DELETE") return prev.filter((l) => l.id !== payload.old.id);
+            const incoming = fromDbVehicleFuelLimit(payload.new);
             const exists = prev.some((l) => l.id === incoming.id);
             return exists ? prev.map((l) => (l.id === incoming.id ? incoming : l)) : [...prev, incoming];
           });
@@ -664,7 +686,7 @@ export default function App() {
             <ReportsView sales={sales} clients={clients} locations={locations} prices={prices} managers={managers} />
           ) : view === "limits" ? (
             <FuelLimitsView
-              clients={clients} vehicles={vehicles} fuelLimits={fuelLimits} fills={fills} prices={prices}
+              clients={clients} vehicles={vehicles} fuelLimits={fuelLimits} vehicleFuelLimits={vehicleFuelLimits} fills={fills} prices={prices}
               companyProfile={companyProfile} managerName={managerName} managers={managers}
             />
           ) : (
@@ -895,6 +917,8 @@ function GlobalStyle() {
       .ps-limits__client-row--on { border-color: var(--petrol-2); background:#EAF3F8; }
       .ps-limits__client-meta { font-size:11px; color:#8A94A0; }
       .ps-limits__gauges { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; }
+      .ps-limits__vehicle-limits { display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; background:#EEF1F4; border-radius:10px; padding:10px 12px; margin-top:4px; }
+      @media (max-width:520px) { .ps-limits__vehicle-limits { grid-template-columns:1fr; } }
       .ps-cal-title { font-family: var(--font-display); font-weight:600; font-size:13.5px; }
       .ps-cal-title--overdue { color: var(--red); }
       .ps-cal-title--nodate { color: var(--amber); }
