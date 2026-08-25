@@ -815,6 +815,7 @@ function GlobalStyle() {
       .ps-cal-cell__num { font-size:15px; font-weight:700; color: var(--ink); }
       .ps-cal-cell__count { font-size:11.5px; font-weight:700; color:#fff; border-radius:9px; padding:2px 7px; line-height:1.4; }
       .ps-cal-cell__stat { font-size:12px; color: var(--ink); font-family: var(--font-mono); font-weight:700; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .ps-cal-cell__stat--done { color: var(--green); }
       .ps-period-summary__divider { width:1px; height:20px; background:rgba(255,255,255,0.2); }
       .ps-history__row-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
       .ps-req-toggle { display:flex; align-items:center; gap:6px; border:none; background:transparent; color: var(--petrol-2); font-size:12.5px; font-weight:600; cursor:pointer; padding:4px 0; align-self:flex-start; }

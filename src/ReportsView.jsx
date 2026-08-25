@@ -91,30 +91,64 @@ export default function ReportsView({ sales, clients, locations, prices, shipmen
     return buckets;
   }, [pendingGroups]);
 
-  /* ---- визуальный календарь: статус и загрузка каждой даты. Статус */
-  /* ---- дня — по худшему из сделок, запланированных на неё: если хоть */
-  /* ---- одна ещё не отгружена и дата прошла — "просрочено" (красный); */
-  /* ---- если всё, что планировалось на день, уже отгружено — "отгружено" */
-  /* ---- (зелёный); иначе — "планируется" (оранжевый). ---- */
-  const dayInfo = useMemo(() => {
+  /* ---- визуальный календарь, две независимые части на каждую дату: ---- */
+  /* ---- 1) plannedByDate — ещё не отгруженный остаток, у которого эта */
+  /* ---- дата стоит как планируемая (красный, если дата уже прошла, ---- */
+  /* ---- иначе оранжевый); 2) actualByDate — что реально отгружено этой */
+  /* ---- датой по факту (журнал отгрузок sale_shipments, а для старых */
+  /* ---- сделок без журнала — их дата отгрузки), зелёным. Дата может ---- */
+  /* ---- попасть в обе части одновременно (часть ещё не отгружена, ---- */
+  /* ---- часть уже фактически ушла в этот день). ---- */
+  const plannedByDate = useMemo(() => {
     const map = new Map();
-    sales.forEach((g) => {
-      const d = g.plannedShipDate;
+    pendingGroups.forEach((r) => {
+      const d = r.group.plannedShipDate;
       if (!d) return;
-      const totalVolume = (g.items || []).reduce((a, it) => a + toNum(it.volume), 0);
-      const shippedVolume = (shipmentsByGroup.get(g.id) || []).reduce((a, s) => a + toNum(s.volume), 0);
-      const isFullyShipped = !!g.shipped || (totalVolume > 0 && shippedVolume >= totalVolume - 0.001);
-      if (!map.has(d)) map.set(d, { count: 0, totalVolume: 0, allShipped: true, byFuel: new Map() });
+      if (!map.has(d)) map.set(d, { count: 0, totalVolume: 0, byFuel: new Map() });
       const cur = map.get(d);
       cur.count += 1;
-      cur.totalVolume += totalVolume;
-      if (!isFullyShipped) cur.allShipped = false;
-      (g.items || []).forEach((it) => cur.byFuel.set(it.fuel, (cur.byFuel.get(it.fuel) || 0) + toNum(it.volume)));
+      r.remaining.forEach((vol, fuel) => {
+        cur.totalVolume += vol;
+        cur.byFuel.set(fuel, (cur.byFuel.get(fuel) || 0) + vol);
+      });
     });
-    const today = todayIso();
-    map.forEach((cur, d) => { cur.status = cur.allShipped ? "shipped" : d < today ? "overdue" : "planned"; });
     return map;
-  }, [sales, shipmentsByGroup]);
+  }, [pendingGroups]);
+
+  const actualByDate = useMemo(() => {
+    const map = new Map();
+    const add = (d, groupId, fuel, vol) => {
+      if (!d) return;
+      if (!map.has(d)) map.set(d, { groupIds: new Set(), totalVolume: 0, byFuel: new Map() });
+      const cur = map.get(d);
+      cur.groupIds.add(groupId);
+      cur.totalVolume += vol;
+      cur.byFuel.set(fuel, (cur.byFuel.get(fuel) || 0) + vol);
+    };
+    const groupsWithLog = new Set();
+    (shipments || []).forEach((s) => { groupsWithLog.add(s.groupId); add(s.shipDate, s.groupId, s.fuel, toNum(s.volume)); });
+    // старые сделки, отгруженные целиком чекбоксом — без записей в журнале отгрузок
+    sales.forEach((g) => {
+      if (!g.shipped || !g.shippedDate || groupsWithLog.has(g.id)) return;
+      (g.items || []).forEach((it) => add(g.shippedDate, g.id, it.fuel, toNum(it.volume)));
+    });
+    return map;
+  }, [shipments, sales]);
+
+  const dayInfo = useMemo(() => {
+    const map = new Map();
+    const today = todayIso();
+    const dates = new Set([...plannedByDate.keys(), ...actualByDate.keys()]);
+    dates.forEach((d) => {
+      const planned = plannedByDate.get(d) || null;
+      const actual = actualByDate.get(d) || null;
+      const status = planned ? (d < today ? "overdue" : "planned") : "shipped";
+      const totalVolume = (planned?.totalVolume || 0) + (actual?.totalVolume || 0);
+      const count = (planned?.count || 0) + (actual?.groupIds.size || 0);
+      map.set(d, { status, totalVolume, count, planned, actual });
+    });
+    return map;
+  }, [plannedByDate, actualByDate]);
 
   const monthGrid = useMemo(() => {
     const year = calMonth.getFullYear(), month = calMonth.getMonth();
@@ -288,8 +322,11 @@ export default function ReportsView({ sales, clients, locations, prices, shipmen
                     <span className="ps-cal-cell__num">{dayNum}</span>
                     {info && <span className="ps-cal-cell__count" style={{ background: STATUS_COLOR[info.status] }}>{info.count}</span>}
                   </div>
-                  {info && FUELS.filter((f) => info.byFuel.has(f)).map((f) => (
-                    <span key={f} className="ps-cal-cell__stat">{f} {fmtInt(info.byFuel.get(f))}л</span>
+                  {info?.planned && FUELS.filter((f) => info.planned.byFuel.has(f)).map((f) => (
+                    <span key={"p" + f} className="ps-cal-cell__stat">{f} {fmtInt(info.planned.byFuel.get(f))}л</span>
+                  ))}
+                  {info?.actual && FUELS.filter((f) => info.actual.byFuel.has(f)).map((f) => (
+                    <span key={"a" + f} className="ps-cal-cell__stat ps-cal-cell__stat--done">✓ {f} {fmtInt(info.actual.byFuel.get(f))}л</span>
                   ))}
                 </div>
               </button>
