@@ -13,6 +13,7 @@ import Sidebar from "./Sidebar.jsx";
 import ClientsView from "./ClientsView.jsx";
 import SalesView from "./SalesView.jsx";
 import AnalyticsView from "./AnalyticsView.jsx";
+import ShipmentsView from "./ShipmentsView.jsx";
 import ReportsView from "./ReportsView.jsx";
 import StockView from "./StockView.jsx";
 import SellModal from "./SellModal.jsx";
@@ -552,7 +553,7 @@ export default function App() {
         <Sidebar view={view} setView={setView} />
         <div className="ps-main">
           <header className="ps-header">
-            <div className="ps-header__brand"><Fuel size={20} /><span>PlutosOil</span><span className="ps-header__sub">{{ clients: "Клиенты", sales: "Реестр сделок", stock: "Склад", analytics: "Аналитика", reports: "Отчёты" }[view]}</span></div>
+            <div className="ps-header__brand"><Fuel size={20} /><span>PlutosOil</span><span className="ps-header__sub">{{ clients: "Клиенты", sales: "Реестр сделок", stock: "Склад", analytics: "Аналитика", shipments: "Отгрузки", reports: "Отчёты" }[view]}</span></div>
             <div className="ps-header__presence">
               <Users size={14} />
               <div className="ps-avatars">
@@ -587,11 +588,13 @@ export default function App() {
             />
           ) : view === "analytics" ? (
             <AnalyticsView sales={sales} clients={clients} rows={rows} prices={prices} />
-          ) : view === "reports" ? (
-            <ReportsView
+          ) : view === "shipments" ? (
+            <ShipmentsView
               sales={sales} clients={clients} locations={locations} prices={prices} shipments={shipments}
               onOpenSell={(clientId, group) => setSellModal({ clientId, group })}
             />
+          ) : view === "reports" ? (
+            <ReportsView sales={sales} clients={clients} locations={locations} prices={prices} managers={managers} />
           ) : (
             <ClientsView
               clients={clients} loaded={clientsLoaded} rows={rows} sales={sales} managerName={managerName}
@@ -712,6 +715,10 @@ function GlobalStyle() {
       .ps-toolbar--period { padding-top:0; margin-top:-4px; }
       .ps-period-range { display:flex; align-items:center; gap:8px; font-size:12.5px; color:#5B6770; }
       .ps-period-range input { border:1px solid var(--line); background: var(--panel); border-radius:9px; padding:7px 10px; font-size:12.5px; color: var(--ink); font-family: var(--font-body); }
+      .ps-report-builder { background: var(--panel); border:1px solid var(--line); border-radius:14px; margin:0 22px 12px; padding:16px 18px; display:flex; flex-direction:column; gap:12px; }
+      .ps-report-builder__head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; padding-bottom:10px; border-bottom:1px solid var(--line); }
+      .ps-report-builder__group { display:flex; flex-direction:column; gap:6px; }
+      .ps-report-builder__group-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:#8A94A0; }
       .ps-tablewrap { overflow:auto; margin:0 22px 8px; border:1px solid var(--line); border-radius:14px; background:var(--panel); flex:1; }
       .ps-table { border-collapse:collapse; width:100%; font-size:12.5px; }
       .ps-table thead th { position:sticky; top:0; background:#F6F8F9; border-bottom:1px solid var(--line); text-align:left; padding:10px 10px; font-family: var(--font-display); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:#5B6770; cursor:pointer; white-space:nowrap; user-select:none; z-index:1; }
