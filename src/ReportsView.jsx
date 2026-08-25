@@ -26,14 +26,7 @@ const locationLabel = (l) => (l ? `${l.type === "station" ? "АЗС" : "Скла
 
 const fuelText = (map) => [...map.entries()].map(([fuel, v]) => `${fuel} ${fmtInt(v)} л`).join(", ");
 
-function MiniBattery({ ratio, overdue }) {
-  const level = overdue ? "red" : ratio <= 0.33 ? "green" : ratio <= 0.66 ? "amber" : "red";
-  return (
-    <span className={`ps-batt ps-batt--${level}`}>
-      <span className="ps-batt__fill" style={{ width: `${Math.max(10, Math.min(100, ratio * 100))}%` }} />
-    </span>
-  );
-}
+const STATUS_COLOR = { overdue: "#C13B3B", planned: "#E8871E", shipped: "#1E8A56" };
 
 export default function ReportsView({ sales, clients, locations, prices, shipments, onOpenSell }) {
   const [period, setPeriod] = useState("today"); // 'today' | 'yesterday' | 'custom'
@@ -98,20 +91,29 @@ export default function ReportsView({ sales, clients, locations, prices, shipmen
     return buckets;
   }, [pendingGroups]);
 
-  /* ---- визуальный календарь: кол-во сделок и объём по каждому виду ---- */
-  /* ---- топлива на каждую дату ---- */
-  const volumeByDate = useMemo(() => {
+  /* ---- визуальный календарь: статус и загрузка каждой даты. Статус */
+  /* ---- дня — по худшему из сделок, запланированных на неё: если хоть */
+  /* ---- одна ещё не отгружена и дата прошла — "просрочено" (красный); */
+  /* ---- если всё, что планировалось на день, уже отгружено — "отгружено" */
+  /* ---- (зелёный); иначе — "планируется" (оранжевый). ---- */
+  const dayInfo = useMemo(() => {
     const map = new Map();
-    pendingGroups.forEach((r) => {
-      const d = r.group.plannedShipDate;
+    sales.forEach((g) => {
+      const d = g.plannedShipDate;
       if (!d) return;
-      if (!map.has(d)) map.set(d, { count: 0, byFuel: new Map() });
+      const totalVolume = (g.items || []).reduce((a, it) => a + toNum(it.volume), 0);
+      const shippedVolume = (shipmentsByGroup.get(g.id) || []).reduce((a, s) => a + toNum(s.volume), 0);
+      const isFullyShipped = !!g.shipped || (totalVolume > 0 && shippedVolume >= totalVolume - 0.001);
+      if (!map.has(d)) map.set(d, { count: 0, totalVolume: 0, allShipped: true });
       const cur = map.get(d);
       cur.count += 1;
-      r.remaining.forEach((vol, fuel) => cur.byFuel.set(fuel, (cur.byFuel.get(fuel) || 0) + vol));
+      cur.totalVolume += totalVolume;
+      if (!isFullyShipped) cur.allShipped = false;
     });
+    const today = todayIso();
+    map.forEach((cur, d) => { cur.status = cur.allShipped ? "shipped" : d < today ? "overdue" : "planned"; });
     return map;
-  }, [pendingGroups]);
+  }, [sales, shipmentsByGroup]);
 
   const monthGrid = useMemo(() => {
     const year = calMonth.getFullYear(), month = calMonth.getMonth();
@@ -127,15 +129,11 @@ export default function ReportsView({ sales, clients, locations, prices, shipmen
     return cells;
   }, [calMonth]);
 
-  const monthMaxByFuel = useMemo(() => {
-    const max = new Map();
-    monthGrid.forEach((iso) => {
-      const stat = iso && volumeByDate.get(iso);
-      if (!stat) return;
-      stat.byFuel.forEach((v, fuel) => { if (v > (max.get(fuel) || 0)) max.set(fuel, v); });
-    });
+  const monthMaxTotal = useMemo(() => {
+    let max = 0;
+    monthGrid.forEach((iso) => { const v = iso && dayInfo.get(iso)?.totalVolume; if (v > max) max = v; });
     return max;
-  }, [monthGrid, volumeByDate]);
+  }, [monthGrid, dayInfo]);
 
   const overdueCount = calendarBuckets.find((b) => b.key === "overdue")?.rows.length || 0;
   const noDateCount = calendarBuckets.find((b) => b.key === "nodate")?.rows.length || 0;
@@ -266,35 +264,31 @@ export default function ReportsView({ sales, clients, locations, prices, shipmen
           )}
           {selectedDay && <button type="button" className="ps-link-btn" onClick={() => setSelectedDay(null)}>Показать все дни ×</button>}
         </div>
+        <div className="ps-cal-legend">
+          <span><i style={{ background: STATUS_COLOR.overdue }} /> Просрочено</span>
+          <span><i style={{ background: STATUS_COLOR.planned }} /> Планируется</span>
+          <span><i style={{ background: STATUS_COLOR.shipped }} /> Отгружено</span>
+        </div>
         <div className="ps-cal-grid">
           {WEEKDAY_LABELS.map((l) => <div key={l} className="ps-cal-grid__wd">{l}</div>)}
           {monthGrid.map((iso, idx) => {
             if (!iso) return <div key={idx} className="ps-cal-cell ps-cal-cell--empty" />;
-            const stat = volumeByDate.get(iso);
+            const info = dayInfo.get(iso);
             const isToday = iso === todayIso();
-            const isOverdue = !!(iso < todayIso() && stat);
             const dayNum = +iso.slice(8, 10);
-            const fuelRows = stat ? FUELS.filter((f) => stat.byFuel.has(f)) : [];
+            const ratio = info && monthMaxTotal > 0 ? Math.max(0.12, Math.min(1, info.totalVolume / monthMaxTotal)) : 0;
             return (
-              <button key={iso} type="button" disabled={!stat}
-                className={`ps-cal-cell ${isToday ? "ps-cal-cell--today" : ""} ${isOverdue ? "ps-cal-cell--overdue" : ""} ${selectedDay === iso ? "ps-cal-cell--selected" : ""}`}
+              <button key={iso} type="button" disabled={!info}
+                className={`ps-cal-cell ${isToday ? "ps-cal-cell--today" : ""} ${selectedDay === iso ? "ps-cal-cell--selected" : ""}`}
                 onClick={() => setSelectedDay((d) => (d === iso ? null : iso))}>
-                <div className="ps-cal-cell__top">
-                  <span className="ps-cal-cell__num">{dayNum}</span>
-                  {stat && <span className="ps-cal-cell__count">{stat.count}</span>}
+                {info && <div className="ps-cal-cell__fill" style={{ height: `${ratio * 100}%`, background: STATUS_COLOR[info.status] }} />}
+                <div className="ps-cal-cell__content">
+                  <div className="ps-cal-cell__top">
+                    <span className="ps-cal-cell__num">{dayNum}</span>
+                    {info && <span className="ps-cal-cell__count" style={{ background: STATUS_COLOR[info.status] }}>{info.count}</span>}
+                  </div>
+                  {info && <span className="ps-cal-cell__stat">{fmtInt(info.totalVolume)} л</span>}
                 </div>
-                {fuelRows.map((fuel) => {
-                  const vol = stat.byFuel.get(fuel);
-                  const max = monthMaxByFuel.get(fuel) || 0;
-                  const ratio = max > 0 ? vol / max : 1;
-                  return (
-                    <div key={fuel} className="ps-cal-cell__fuel">
-                      <span className="ps-cal-cell__fuel-label">{fuel}</span>
-                      <MiniBattery ratio={ratio} overdue={isOverdue} />
-                      <span className="ps-cal-cell__fuel-vol">{fmtInt(vol)}л</span>
-                    </div>
-                  );
-                })}
               </button>
             );
           })}
@@ -302,7 +296,7 @@ export default function ReportsView({ sales, clients, locations, prices, shipmen
       </div>
 
       {visibleBuckets.length === 0 ? (
-        <div className="ps-empty">{calendarBuckets.length === 0 ? "Нет сделок с неотгруженным остатком." : "На эту дату отгрузок не запланировано."}</div>
+        <div className="ps-empty">{calendarBuckets.length === 0 ? "Нет сделок с неотгруженным остатком." : "На эту дату всё уже отгружено или нет запланированных отгрузок."}</div>
       ) : (
         <div className="ps-journal" style={{ marginBottom: 24 }}>
           {visibleBuckets.map((bucket) => (
