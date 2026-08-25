@@ -440,3 +440,55 @@ alter table sale_groups add column if not exists paid_date date;
 -- отпустили топливо, а не всегда один и тот же адрес компании.
 -- ============================================================
 alter table locations add column if not exists address text default '';
+
+-- ============================================================
+-- Частичная отгрузка (этап 14): купленный объём топлива может
+-- храниться на складе и отгружаться клиенту по частям — за
+-- несколько заездов машин, каждая со своим объёмом. sale_shipments
+-- — журнал фактических отпусков топлива по сделке (одна строка =
+-- один заезд/машина). Остаток по каждому виду топлива в сделке =
+-- объём позиции (sales.volume) минус сумма отпусков этого вида
+-- топлива по этой сделке (sale_shipments.volume). Когда остаток
+-- по всем позициям сделки обнулился — сделка считается отгруженной
+-- целиком, и sale_groups.shipped/shipped_date проставляются
+-- автоматически последней датой отпуска (это не ломает старые
+-- фильтры/отчёты/Excel-экспорт — они уже полагаются на эти поля).
+-- Для сделок, где частичная отгрузка не используется, поведение
+-- не меняется — shipped/shipped_date по-прежнему выставляются
+-- вручную чекбоксом в карточке сделки.
+-- ============================================================
+create table if not exists sale_shipments (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid references sale_groups(id) on delete cascade,
+  fuel text default '',
+  volume numeric,
+  vehicle_plate text default '',
+  driver text default '',
+  ship_date date default current_date,
+  comment text default '',
+  created_by text default '',
+  created_at timestamptz default now()
+);
+
+alter table sale_shipments enable row level security;
+
+drop policy if exists "authenticated read" on sale_shipments;
+create policy "authenticated read" on sale_shipments for select to authenticated using (true);
+
+drop policy if exists "authenticated insert" on sale_shipments;
+create policy "authenticated insert" on sale_shipments for insert to authenticated with check (true);
+
+drop policy if exists "authenticated update" on sale_shipments;
+create policy "authenticated update" on sale_shipments for update to authenticated using (true);
+
+drop policy if exists "authenticated delete" on sale_shipments;
+create policy "authenticated delete" on sale_shipments for delete to authenticated using (true);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'sale_shipments'
+  ) then
+    alter publication supabase_realtime add table sale_shipments;
+  end if;
+end $$;

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Plus, Search, X, ShoppingCart, Download, CalendarRange } from "lucide-react";
+import { Plus, Search, X, ShoppingCart, Download, CalendarRange, Truck } from "lucide-react";
 import * as XLSX from "xlsx";
 import { fmtInt, toNum, colorForName, todayStr } from "./utils.js";
 import { FUELS, DENSITY, CONTAINER_LABELS } from "./shared.jsx";
@@ -31,7 +31,19 @@ const shortDate = (iso) => {
 const fuelSummary = (items) =>
   items.map((i) => `${i.fuel || "—"}${i.containerMode ? ` (${CONTAINER_LABELS[i.containerMode]})` : ""}`).join(", ");
 
-export default function SalesView({ sales, salesLoaded, clients, managerName, prices, onOpenSell }) {
+const shipStatusFor = (sale, shipmentsByGroup) => {
+  const groupShipments = shipmentsByGroup.get(sale.id) || [];
+  if (groupShipments.length === 0) {
+    return sale.shipped ? { state: "full", shippedVolume: null, totalVolume: null } : { state: "none", shippedVolume: null, totalVolume: null };
+  }
+  const totalVolume = sale.items.reduce((a, i) => a + toNum(i.volume), 0);
+  const shippedVolume = groupShipments.reduce((a, s) => a + toNum(s.volume), 0);
+  if (totalVolume > 0 && shippedVolume >= totalVolume - 0.001) return { state: "full", shippedVolume, totalVolume };
+  if (shippedVolume > 0) return { state: "partial", shippedVolume, totalVolume };
+  return { state: "none", shippedVolume, totalVolume };
+};
+
+export default function SalesView({ sales, salesLoaded, clients, managerName, prices, shipments, onOpenSell, onOpenShipment }) {
   const [search, setSearch] = useState("");
   const [fuelFilter, setFuelFilter] = useState(null);
   const [managerFilter, setManagerFilter] = useState("");
@@ -58,6 +70,15 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, pr
     () => sales.map((s) => ({ ...s, clientName: clientById.get(s.clientId)?.company || "Клиент удалён" })),
     [sales, clientById]
   );
+
+  const shipmentsByGroup = useMemo(() => {
+    const map = new Map();
+    (shipments || []).forEach((sh) => {
+      if (!map.has(sh.groupId)) map.set(sh.groupId, []);
+      map.get(sh.groupId).push(sh);
+    });
+    return map;
+  }, [shipments]);
 
   const filtered = useMemo(() => {
     let out = enriched;
@@ -214,7 +235,9 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, pr
               </div>
               <div className="ps-journal__entries">
                 {entries.map((s) => (
-                  <button key={s.id} type="button" className="ps-journal__entry" onClick={() => onOpenSell(s.clientId, s)}>
+                  <div key={s.id} role="button" tabIndex={0} className="ps-journal__entry"
+                    onClick={() => onOpenSell(s.clientId, s)}
+                    onKeyDown={(e) => { if (e.key === "Enter") onOpenSell(s.clientId, s); }}>
                     <span className="ps-journal__client">{s.clientName}</span>
                     <span className="ps-history__fuel">{fuelSummary(s.items)}</span>
                     <span className="ps-journal__vol">{fmtInt(s.items.reduce((a, i) => a + toNum(i.volume), 0))} л</span>
@@ -224,15 +247,25 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, pr
                       {toNum(s.agentFee) > 0 && <span className="ps-tara-badge"> · агент {fmtInt(toNum(s.agentFee))}</span>}
                     </span>
                     <span style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
-                      {s.shipped
-                        ? <span className="ps-ship-badge ps-ship-badge--done">Отгружено{s.shippedDate ? " " + shortDate(s.shippedDate) : ""}</span>
-                        : <span className="ps-ship-badge ps-ship-badge--pending">Не отгружено</span>}
+                      {(() => {
+                        const status = shipStatusFor(s, shipmentsByGroup);
+                        if (status.state === "full") {
+                          return <span className="ps-ship-badge ps-ship-badge--done">Отгружено{s.shippedDate ? " " + shortDate(s.shippedDate) : ""}</span>;
+                        }
+                        if (status.state === "partial") {
+                          return <span className="ps-ship-badge ps-ship-badge--partial">Частично {fmtInt(status.shippedVolume)}/{fmtInt(status.totalVolume)} л</span>;
+                        }
+                        return <span className="ps-ship-badge ps-ship-badge--pending">Не отгружено</span>;
+                      })()}
                       {s.paid
                         ? <span className="ps-ship-badge ps-ship-badge--done">Оплачено{s.paidDate ? " " + shortDate(s.paidDate) : ""}</span>
                         : <span className="ps-ship-badge ps-ship-badge--pending">Не оплачено</span>}
+                      <button type="button" className="ps-ship-btn" onClick={(e) => { e.stopPropagation(); onOpenShipment(s); }}>
+                        <Truck size={11} /> Отгрузка
+                      </button>
                     </span>
                     <span className="ps-journal__manager">{s.createdBy ? <span style={{ color: colorForName(s.createdBy) }}>{s.createdBy}</span> : "—"}</span>
-                  </button>
+                  </div>
                 ))}
               </div>
             </div>

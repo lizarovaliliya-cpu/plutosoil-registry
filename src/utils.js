@@ -127,6 +127,20 @@ export const toDbTransfer = (t) => ({
   comment: t.comment, created_by: t.createdBy,
 });
 
+/* ---- частичная отгрузка топлива по сделке (одна машина = одна строка) ---- */
+export const fromDbShipment = (s) => ({
+  id: s.id, groupId: s.group_id, fuel: s.fuel || "", volume: s.volume ?? "",
+  vehiclePlate: s.vehicle_plate || "", driver: s.driver || "", shipDate: s.ship_date || "",
+  comment: s.comment || "", createdBy: s.created_by || "",
+  createdAt: s.created_at ? new Date(s.created_at).getTime() : 0,
+});
+
+export const toDbShipment = (s) => ({
+  group_id: s.groupId, fuel: s.fuel, volume: toNum(s.volume),
+  vehicle_plate: s.vehiclePlate || "", driver: s.driver || "",
+  ship_date: s.shipDate, comment: s.comment || "", created_by: s.createdBy,
+});
+
 export const fromDbCompanyProfile = (p) => ({
   name: p.name || "", inn: p.inn || "", kpp: p.kpp || "", address: p.address || "",
   releasedBy: p.released_by || "",

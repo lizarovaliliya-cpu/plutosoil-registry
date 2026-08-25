@@ -6,7 +6,7 @@ import { SEED_DATA } from "./seedData.js";
 import {
   genId, todayStr, toNum, fmtInt, timeAgo, colorForName,
   fromDbClient, toDbClient, fromDbSale, fromDbSaleGroup, buildSales, fromDbPrice, fromDbCompanyProfile, fromDbReceipt,
-  fromDbLocation, toDbLocation, fromDbTransfer,
+  fromDbLocation, toDbLocation, fromDbTransfer, fromDbShipment,
 } from "./utils.js";
 import { FUELS, DENSITY } from "./shared.jsx";
 import Sidebar from "./Sidebar.jsx";
@@ -20,6 +20,7 @@ import PricesModal from "./PricesModal.jsx";
 import CompanyProfileModal from "./CompanyProfileModal.jsx";
 import StockReceiptModal from "./StockReceiptModal.jsx";
 import TransferModal from "./TransferModal.jsx";
+import ShipmentModal from "./ShipmentModal.jsx";
 
 /* ============================================================
    PlutosOil — Реестр покупателей топлива
@@ -75,11 +76,14 @@ export default function App() {
   const [locationsLoaded, setLocationsLoaded] = useState(false);
   const [transfers, setTransfers] = useState([]);
   const [transfersLoaded, setTransfersLoaded] = useState(false);
+  const [shipments, setShipments] = useState([]);
+  const [shipmentsLoaded, setShipmentsLoaded] = useState(false);
   const [sellModal, setSellModal] = useState(null); // { clientId } | null
   const [pricesModalOpen, setPricesModalOpen] = useState(false);
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
   const [receiptModal, setReceiptModal] = useState(null); // { receipt } | null, only when open
   const [transferModal, setTransferModal] = useState(null); // { transfer } | null, only when open
+  const [shipmentModal, setShipmentModal] = useState(null); // { group } | null, only when open
   const [, forceTick] = useState(0);
   const presenceChannelRef = useRef(null);
 
@@ -268,6 +272,28 @@ export default function App() {
             const incoming = fromDbTransfer(payload.new);
             const exists = prev.some((t) => t.id === incoming.id);
             return exists ? prev.map((t) => (t.id === incoming.id ? incoming : t)) : [incoming, ...prev];
+          });
+        })
+        .subscribe();
+    })();
+    return () => { if (channel) supabase.removeChannel(channel); };
+  }, [session]);
+
+  /* ---- частичная отгрузка топлива по сделкам: загрузка + realtime ---- */
+  useEffect(() => {
+    if (!session) { setShipments([]); setShipmentsLoaded(false); return; }
+    let channel;
+    (async () => {
+      const { data } = await supabase.from("sale_shipments").select("*").order("ship_date", { ascending: false });
+      setShipments((data || []).map(fromDbShipment));
+      setShipmentsLoaded(true);
+      channel = supabase.channel("sale-shipments-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "sale_shipments" }, (payload) => {
+          setShipments((prev) => {
+            if (payload.eventType === "DELETE") return prev.filter((s) => s.id !== payload.old.id);
+            const incoming = fromDbShipment(payload.new);
+            const exists = prev.some((s) => s.id === incoming.id);
+            return exists ? prev.map((s) => (s.id === incoming.id ? incoming : s)) : [incoming, ...prev];
           });
         })
         .subscribe();
@@ -546,7 +572,9 @@ export default function App() {
           {view === "sales" ? (
             <SalesView
               sales={sales} salesLoaded={salesLoaded} clients={clients} managerName={managerName} prices={prices}
+              shipments={shipments}
               onOpenSell={(clientId, group) => setSellModal({ clientId, group })}
+              onOpenShipment={(group) => setShipmentModal({ group })}
             />
           ) : view === "stock" ? (
             <StockView
@@ -595,6 +623,13 @@ export default function App() {
         <TransferModal
           transfer={transferModal.transfer} managerName={managerName} managers={managers} locations={locations} companyProfile={companyProfile} prices={prices}
           onClose={() => setTransferModal(null)}
+        />
+      )}
+      {shipmentModal && (
+        <ShipmentModal
+          group={shipmentModal.group} clients={clients} shipments={shipments} managerName={managerName} managers={managers}
+          companyProfile={companyProfile} prices={prices}
+          onClose={() => setShipmentModal(null)}
         />
       )}
     </div>
@@ -746,6 +781,10 @@ function GlobalStyle() {
       .ps-ship-badge { font-size:10.5px; font-weight:600; padding:3px 8px; border-radius:20px; white-space:nowrap; }
       .ps-ship-badge--done { background:#E1F4EA; color:#1E8A56; }
       .ps-ship-badge--pending { background:#FCEBD3; color:#C9750E; }
+      .ps-ship-badge--partial { background:#DCEAF3; color:#175983; }
+      .ps-ship-btn { border:none; background:transparent; color: var(--petrol-2); font-size:10.5px; font-weight:600; cursor:pointer; padding:2px 0; display:flex; align-items:center; gap:3px; }
+      .ps-ship-btn:hover { text-decoration:underline; }
+      .ps-shipment-row { display:grid; grid-template-columns: 18px 1fr 1.6fr 1fr 1fr auto auto; gap:8px; align-items:center; background: var(--panel); border:1px solid var(--line); border-radius:9px; padding:8px 10px; font-size:12.5px; }
       .ps-period-summary__divider { width:1px; height:20px; background:rgba(255,255,255,0.2); }
       .ps-history__row-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
       .ps-req-toggle { display:flex; align-items:center; gap:6px; border:none; background:transparent; color: var(--petrol-2); font-size:12.5px; font-weight:600; cursor:pointer; padding:4px 0; align-self:flex-start; }
