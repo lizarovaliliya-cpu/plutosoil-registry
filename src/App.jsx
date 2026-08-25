@@ -706,6 +706,8 @@ function GlobalStyle() {
       .ps-chips { display:flex; gap:6px; flex-wrap:wrap; }
       .ps-chip { border:1px solid var(--line); background: var(--panel); border-radius:20px; padding:6px 12px; font-size:12px; cursor:pointer; color:#5B6770; }
       .ps-chip--on { background: var(--petrol); border-color: var(--petrol); color:#fff; }
+      .ps-chip--warn { border-color:#F3C6C6; color: var(--red); }
+      .ps-chip--warn.ps-chip--on { background: var(--red); border-color: var(--red); color:#fff; }
       .ps-select-filter { border:1px solid var(--line); background: var(--panel); border-radius:9px; padding:8px 12px; font-size:12.5px; color: var(--ink); }
       .ps-toolbar--period { padding-top:0; margin-top:-4px; }
       .ps-period-range { display:flex; align-items:center; gap:8px; font-size:12.5px; color:#5B6770; }
@@ -793,6 +795,20 @@ function GlobalStyle() {
       .ps-cal-title--nodate { color: var(--amber); }
       .ps-cal-title--today { color: var(--petrol-2); }
       .ps-cal-title--future { color: var(--petrol); }
+      .ps-cal-widget { background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:18px; }
+      .ps-cal-widget__head { display:flex; align-items:center; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
+      .ps-cal-widget__title { font-family: var(--font-display); font-weight:600; font-size:14px; color: var(--petrol); min-width:150px; text-align:center; }
+      .ps-cal-grid { display:grid; grid-template-columns: repeat(7, 1fr); gap:5px; }
+      .ps-cal-grid__wd { text-align:center; font-size:10.5px; color:#8A94A0; font-weight:600; padding-bottom:2px; }
+      .ps-cal-cell { position:relative; min-height:58px; border:1px solid var(--line); border-radius:8px; background: var(--paper); display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; gap:4px; padding:6px 7px; font-family: var(--font-body); }
+      .ps-cal-cell--empty { border-color:transparent; background:transparent; }
+      button.ps-cal-cell { cursor:pointer; }
+      button.ps-cal-cell:disabled { cursor:default; }
+      button.ps-cal-cell:not(:disabled):hover { border-color: var(--petrol-2); }
+      .ps-cal-cell--today { border:2px solid var(--petrol-2); }
+      .ps-cal-cell--selected { outline:2px solid var(--petrol); outline-offset:-2px; }
+      .ps-cal-cell__num { font-size:11.5px; font-weight:600; color: var(--ink); }
+      .ps-cal-cell__stat { font-size:9.5px; color: var(--ink); font-family: var(--font-mono); line-height:1.3; }
       .ps-period-summary__divider { width:1px; height:20px; background:rgba(255,255,255,0.2); }
       .ps-history__row-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
       .ps-req-toggle { display:flex; align-items:center; gap:6px; border:none; background:transparent; color: var(--petrol-2); font-size:12.5px; font-weight:600; cursor:pointer; padding:4px 0; align-self:flex-start; }

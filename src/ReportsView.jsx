@@ -1,8 +1,11 @@
 import React, { useState, useMemo } from "react";
-import { Download, FileSpreadsheet, CalendarRange, CalendarClock, AlertTriangle } from "lucide-react";
+import { Download, FileSpreadsheet, CalendarRange, CalendarClock, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import * as XLSX from "xlsx";
 import { fmtInt, toNum, colorForName } from "./utils.js";
 import { FUELS, DENSITY, CONTAINER_LABELS } from "./shared.jsx";
+
+const MONTH_NAMES = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
+const WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
 const isoOf = (d) => {
   const p = (n) => String(n).padStart(2, "0");
@@ -28,6 +31,8 @@ export default function ReportsView({ sales, clients, locations, prices, shipmen
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [onlyUnshipped, setOnlyUnshipped] = useState(false);
+  const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [selectedDay, setSelectedDay] = useState(null); // iso date | "overdue" | "nodate" | null
 
   const openCustomPeriod = () => {
     setPeriod("custom");
@@ -83,6 +88,46 @@ export default function ReportsView({ sales, clients, locations, prices, shipmen
     dateBuckets.forEach(([d, rows]) => buckets.push({ key: d, label: d === today ? `Сегодня, ${shortDate(d)}` : shortDate(d), rows, tone: d === today ? "today" : "future" }));
     return buckets;
   }, [pendingGroups]);
+
+  /* ---- визуальный календарь: объём/кол-во сделок по каждой дате ---- */
+  const volumeByDate = useMemo(() => {
+    const map = new Map();
+    pendingGroups.forEach((r) => {
+      const d = r.group.plannedShipDate;
+      if (!d) return;
+      const volume = [...r.remaining.values()].reduce((a, v) => a + v, 0);
+      if (!map.has(d)) map.set(d, { count: 0, volume: 0 });
+      const cur = map.get(d);
+      cur.count += 1;
+      cur.volume += volume;
+    });
+    return map;
+  }, [pendingGroups]);
+
+  const monthGrid = useMemo(() => {
+    const year = calMonth.getFullYear(), month = calMonth.getMonth();
+    const firstOfMonth = new Date(year, month, 1);
+    const startOffset = (firstOfMonth.getDay() + 6) % 7; // неделя с понедельника
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < startOffset; i++) cells.push(null);
+    for (let day = 1; day <= daysInMonth; day++) {
+      cells.push(`${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+    }
+    while (cells.length % 7 !== 0) cells.push(null);
+    return cells;
+  }, [calMonth]);
+
+  const monthMaxVolume = useMemo(() => {
+    let max = 0;
+    monthGrid.forEach((iso) => { const v = iso && volumeByDate.get(iso)?.volume; if (v > max) max = v; });
+    return max;
+  }, [monthGrid, volumeByDate]);
+
+  const overdueCount = calendarBuckets.find((b) => b.key === "overdue")?.rows.length || 0;
+  const noDateCount = calendarBuckets.find((b) => b.key === "nodate")?.rows.length || 0;
+
+  const visibleBuckets = !selectedDay ? calendarBuckets : calendarBuckets.filter((b) => b.key === selectedDay);
 
   const exportCalendarExcel = () => {
     const headers = ["Дата отгрузки", "Клиент", "Остаток к отгрузке", "Телефон", "Комментарий", "Менеджер"];
@@ -186,11 +231,58 @@ export default function ReportsView({ sales, clients, locations, prices, shipmen
         </button>
       </div>
 
-      {calendarBuckets.length === 0 ? (
-        <div className="ps-empty">Нет сделок с неотгруженным остатком.</div>
+      <div className="ps-cal-widget">
+        <div className="ps-cal-widget__head">
+          <button type="button" className="ps-mini" onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1))}><ChevronLeft size={14} /></button>
+          <span className="ps-cal-widget__title">{MONTH_NAMES[calMonth.getMonth()]} {calMonth.getFullYear()}</span>
+          <button type="button" className="ps-mini" onClick={() => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1))}><ChevronRight size={14} /></button>
+          <button type="button" className="ps-link-btn" style={{ marginLeft: 6 }}
+            onClick={() => { const d = new Date(); setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1)); }}>Сегодня</button>
+          <div className="ps-toolbar__spacer" />
+          {overdueCount > 0 && (
+            <button type="button" className={`ps-chip ps-chip--warn ${selectedDay === "overdue" ? "ps-chip--on" : ""}`}
+              onClick={() => setSelectedDay((d) => (d === "overdue" ? null : "overdue"))}>
+              <AlertTriangle size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Просрочено {overdueCount}
+            </button>
+          )}
+          {noDateCount > 0 && (
+            <button type="button" className={`ps-chip ${selectedDay === "nodate" ? "ps-chip--on" : ""}`}
+              onClick={() => setSelectedDay((d) => (d === "nodate" ? null : "nodate"))}>
+              Без даты {noDateCount}
+            </button>
+          )}
+          {selectedDay && <button type="button" className="ps-link-btn" onClick={() => setSelectedDay(null)}>Показать все дни ×</button>}
+        </div>
+        <div className="ps-cal-grid">
+          {WEEKDAY_LABELS.map((l) => <div key={l} className="ps-cal-grid__wd">{l}</div>)}
+          {monthGrid.map((iso, idx) => {
+            if (!iso) return <div key={idx} className="ps-cal-cell ps-cal-cell--empty" />;
+            const stat = volumeByDate.get(iso);
+            const isToday = iso === todayIso();
+            const isOverdue = iso < todayIso() && stat;
+            const ratio = stat && monthMaxVolume > 0 ? stat.volume / monthMaxVolume : 0;
+            const dayNum = +iso.slice(8, 10);
+            const bg = !stat ? undefined : isOverdue
+              ? `rgba(193,59,59,${(0.15 + ratio * 0.5).toFixed(2)})`
+              : `rgba(232,135,30,${(0.12 + ratio * 0.55).toFixed(2)})`;
+            return (
+              <button key={iso} type="button" disabled={!stat}
+                className={`ps-cal-cell ${isToday ? "ps-cal-cell--today" : ""} ${selectedDay === iso ? "ps-cal-cell--selected" : ""}`}
+                style={{ background: bg }}
+                onClick={() => setSelectedDay((d) => (d === iso ? null : iso))}>
+                <span className="ps-cal-cell__num">{dayNum}</span>
+                {stat && <span className="ps-cal-cell__stat">{stat.count} · {fmtInt(stat.volume)} л</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {visibleBuckets.length === 0 ? (
+        <div className="ps-empty">{calendarBuckets.length === 0 ? "Нет сделок с неотгруженным остатком." : "На эту дату отгрузок не запланировано."}</div>
       ) : (
         <div className="ps-journal" style={{ marginBottom: 24 }}>
-          {calendarBuckets.map((bucket) => (
+          {visibleBuckets.map((bucket) => (
             <div key={bucket.key} className="ps-journal__day">
               <div className="ps-journal__day-head">
                 <span className={`ps-cal-title ps-cal-title--${bucket.tone}`}>
