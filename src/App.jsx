@@ -588,7 +588,10 @@ export default function App() {
           ) : view === "analytics" ? (
             <AnalyticsView sales={sales} clients={clients} rows={rows} prices={prices} />
           ) : view === "reports" ? (
-            <ReportsView sales={sales} clients={clients} locations={locations} prices={prices} />
+            <ReportsView
+              sales={sales} clients={clients} locations={locations} prices={prices} shipments={shipments}
+              onOpenSell={(clientId, group) => setSellModal({ clientId, group })}
+            />
           ) : (
             <ClientsView
               clients={clients} loaded={clientsLoaded} rows={rows} sales={sales} managerName={managerName}
@@ -785,6 +788,11 @@ function GlobalStyle() {
       .ps-ship-btn { border:none; background:transparent; color: var(--petrol-2); font-size:10.5px; font-weight:600; cursor:pointer; padding:2px 0; display:flex; align-items:center; gap:3px; }
       .ps-ship-btn:hover { text-decoration:underline; }
       .ps-shipment-row { display:grid; grid-template-columns: 18px 1fr 1.6fr 1fr 1fr auto auto; gap:8px; align-items:center; background: var(--panel); border:1px solid var(--line); border-radius:9px; padding:8px 10px; font-size:12.5px; }
+      .ps-cal-title { font-family: var(--font-display); font-weight:600; font-size:13.5px; }
+      .ps-cal-title--overdue { color: var(--red); }
+      .ps-cal-title--nodate { color: var(--amber); }
+      .ps-cal-title--today { color: var(--petrol-2); }
+      .ps-cal-title--future { color: var(--petrol); }
       .ps-period-summary__divider { width:1px; height:20px; background:rgba(255,255,255,0.2); }
       .ps-history__row-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
       .ps-req-toggle { display:flex; align-items:center; gap:6px; border:none; background:transparent; color: var(--petrol-2); font-size:12.5px; font-weight:600; cursor:pointer; padding:4px 0; align-self:flex-start; }

@@ -61,6 +61,7 @@ export const fromDbSaleGroup = (g) => ({
   comment: g.comment || "", createdBy: g.created_by || "",
   shipped: !!g.shipped, shippedDate: g.shipped_date || "", agentFee: g.agent_fee ?? "",
   paid: !!g.paid, paidDate: g.paid_date || "",
+  plannedShipDate: g.planned_ship_date || "",
   createdAt: g.created_at ? new Date(g.created_at).getTime() : 0,
 });
 
@@ -70,6 +71,7 @@ export const toDbSaleGroup = (g) => ({
   shipped: !!g.shipped, shipped_date: g.shipped ? (g.shippedDate || null) : null,
   paid: !!g.paid, paid_date: g.paid ? (g.paidDate || null) : null,
   agent_fee: g.agentFee === "" ? null : toNum(g.agentFee),
+  planned_ship_date: g.plannedShipDate || null,
 });
 
 /* ---- собрать сделки: шапка + её позиции ---- */

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Download, FileSpreadsheet, CalendarRange } from "lucide-react";
+import { Download, FileSpreadsheet, CalendarRange, CalendarClock, AlertTriangle } from "lucide-react";
 import * as XLSX from "xlsx";
 import { fmtInt, toNum, colorForName } from "./utils.js";
 import { FUELS, DENSITY, CONTAINER_LABELS } from "./shared.jsx";
@@ -21,7 +21,9 @@ const shortDate = (iso) => {
 
 const locationLabel = (l) => (l ? `${l.type === "station" ? "АЗС" : "Склад"} · ${l.name}` : "Без склада");
 
-export default function ReportsView({ sales, clients, locations, prices }) {
+const fuelText = (map) => [...map.entries()].map(([fuel, v]) => `${fuel} ${fmtInt(v)} л`).join(", ");
+
+export default function ReportsView({ sales, clients, locations, prices, shipments, onOpenSell }) {
   const [period, setPeriod] = useState("today"); // 'today' | 'yesterday' | 'custom'
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -36,6 +38,70 @@ export default function ReportsView({ sales, clients, locations, prices }) {
   const clientById = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
   const locationById = useMemo(() => new Map((locations || []).map((l) => [l.id, l])), [locations]);
   const densityFor = (fuel) => toNum((prices || []).find((p) => p.fuel === fuel)?.density) || DENSITY[fuel] || 0;
+
+  /* ---- календарь отгрузок: сделки с ещё не отгруженным остатком, ---- */
+  /* ---- сгруппированные по планируемой дате отгрузки ---- */
+  const shipmentsByGroup = useMemo(() => {
+    const map = new Map();
+    (shipments || []).forEach((sh) => {
+      if (!map.has(sh.groupId)) map.set(sh.groupId, []);
+      map.get(sh.groupId).push(sh);
+    });
+    return map;
+  }, [shipments]);
+
+  const pendingGroups = useMemo(() => {
+    return sales
+      .map((g) => {
+        const shipped = shipmentsByGroup.get(g.id) || [];
+        const remaining = new Map();
+        (g.items || []).forEach((it) => remaining.set(it.fuel, (remaining.get(it.fuel) || 0) + toNum(it.volume)));
+        shipped.forEach((s) => remaining.set(s.fuel, (remaining.get(s.fuel) || 0) - toNum(s.volume)));
+        [...remaining.keys()].forEach((f) => { if (remaining.get(f) <= 0.001) remaining.delete(f); });
+        return { group: g, remaining };
+      })
+      .filter((r) => r.remaining.size > 0 && !r.group.shipped);
+  }, [sales, shipmentsByGroup]);
+
+  const calendarBuckets = useMemo(() => {
+    const today = todayIso();
+    const overdue = [];
+    const noDate = [];
+    const byDate = new Map();
+    pendingGroups.forEach((r) => {
+      const d = r.group.plannedShipDate;
+      if (!d) { noDate.push(r); return; }
+      if (d < today) { overdue.push(r); return; }
+      if (!byDate.has(d)) byDate.set(d, []);
+      byDate.get(d).push(r);
+    });
+    overdue.sort((a, b) => (a.group.plannedShipDate || "").localeCompare(b.group.plannedShipDate || ""));
+    const dateBuckets = [...byDate.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const buckets = [];
+    if (overdue.length) buckets.push({ key: "overdue", label: "Просрочено", rows: overdue, tone: "overdue" });
+    if (noDate.length) buckets.push({ key: "nodate", label: "Без даты", rows: noDate, tone: "nodate" });
+    dateBuckets.forEach(([d, rows]) => buckets.push({ key: d, label: d === today ? `Сегодня, ${shortDate(d)}` : shortDate(d), rows, tone: d === today ? "today" : "future" }));
+    return buckets;
+  }, [pendingGroups]);
+
+  const exportCalendarExcel = () => {
+    const headers = ["Дата отгрузки", "Клиент", "Остаток к отгрузке", "Телефон", "Комментарий", "Менеджер"];
+    const body = [];
+    calendarBuckets.forEach((bucket) => {
+      bucket.rows.forEach((r) => {
+        const client = clientById.get(r.group.clientId);
+        body.push([
+          bucket.tone === "overdue" ? `Просрочено (${shortDate(r.group.plannedShipDate)})` : bucket.tone === "nodate" ? "Без даты" : bucket.label,
+          client?.company || "Клиент удалён", fuelText(r.remaining), client?.phone || "", r.group.comment || "", r.group.createdBy || "",
+        ]);
+      });
+    });
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...body]);
+    ws["!cols"] = headers.map(() => ({ wch: 22 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Календарь отгрузок");
+    XLSX.writeFile(wb, `PlutosOil_календарь_отгрузок_${todayIso()}.xlsx`);
+  };
 
   const periodGroups = useMemo(() => {
     let out = sales;
@@ -109,6 +175,50 @@ export default function ReportsView({ sales, clients, locations, prices }) {
 
   return (
     <>
+      <div className="ps-toolbar">
+        <div className="ps-field-head" style={{ flex: 1 }}>
+          <span style={{ fontWeight: 600, color: "var(--petrol)", fontFamily: "var(--font-display)", fontSize: 15 }}>
+            <CalendarClock size={16} style={{ verticalAlign: -3, marginRight: 6 }} />Календарь отгрузок
+          </span>
+        </div>
+        <button className="ps-btn" disabled={calendarBuckets.length === 0} onClick={exportCalendarExcel}>
+          <Download size={15} /> Excel
+        </button>
+      </div>
+
+      {calendarBuckets.length === 0 ? (
+        <div className="ps-empty">Нет сделок с неотгруженным остатком.</div>
+      ) : (
+        <div className="ps-journal" style={{ marginBottom: 24 }}>
+          {calendarBuckets.map((bucket) => (
+            <div key={bucket.key} className="ps-journal__day">
+              <div className="ps-journal__day-head">
+                <span className={`ps-cal-title ps-cal-title--${bucket.tone}`}>
+                  {bucket.tone === "overdue" && <AlertTriangle size={13} style={{ verticalAlign: -2, marginRight: 4 }} />}
+                  {bucket.label}
+                </span>
+                <span className="ps-journal__day-stats">{bucket.rows.length} {bucket.rows.length === 1 ? "сделка" : "сделки"}</span>
+              </div>
+              <div className="ps-journal__entries">
+                {bucket.rows.map((r) => {
+                  const client = clientById.get(r.group.clientId);
+                  return (
+                    <button key={r.group.id} type="button" className="ps-journal__entry" style={{ gridTemplateColumns: "1.6fr 1.6fr 1fr 1.4fr 1fr" }}
+                      onClick={() => onOpenSell && onOpenSell(r.group.clientId, r.group)}>
+                      <span className="ps-journal__client">{client?.company || "Клиент удалён"}</span>
+                      <span className="ps-history__fuel">{fuelText(r.remaining)}</span>
+                      <span>{client?.phone || "—"}</span>
+                      <span style={{ color: "#8A94A0", fontSize: 11.5 }}>{r.group.comment || ""}</span>
+                      <span className="ps-journal__manager">{r.group.createdBy ? <span style={{ color: colorForName(r.group.createdBy) }}>{r.group.createdBy}</span> : "—"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="ps-toolbar">
         <div className="ps-chips">
           <button className={`ps-chip ${period === "today" ? "ps-chip--on" : ""}`} onClick={() => setPeriod("today")}>Сегодня</button>

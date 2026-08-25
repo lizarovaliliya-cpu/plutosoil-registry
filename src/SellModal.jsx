@@ -178,6 +178,7 @@ export default function SellModal({ clients, managerName, managers, presetClient
   const [saleDate, setSaleDate] = useState(group?.saleDate || isoToday());
   const [paymentMethod, setPaymentMethod] = useState(group?.paymentMethod || PAYMENT_METHODS[0]);
   const [comment, setComment] = useState(group?.comment || "");
+  const [plannedShipDate, setPlannedShipDate] = useState(group?.plannedShipDate || "");
   const [shipped, setShipped] = useState(group?.shipped || false);
   const [shippedDate, setShippedDate] = useState(group?.shippedDate || "");
   const [paid, setPaid] = useState(group?.paid || false);
@@ -211,7 +212,7 @@ export default function SellModal({ clients, managerName, managers, presetClient
     setError("");
 
     const groupPayload = toDbSaleGroup({
-      clientId, saleDate, paymentMethod, comment, shipped, shippedDate, paid, paidDate, agentFee,
+      clientId, saleDate, paymentMethod, comment, shipped, shippedDate, paid, paidDate, agentFee, plannedShipDate,
       createdBy: createdBy || managerName || "Гость",
     });
 
@@ -402,6 +403,10 @@ export default function SellModal({ clients, managerName, managers, presetClient
           <label className="ps-field">
             <span>Дата продажи</span>
             <input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} />
+          </label>
+          <label className="ps-field">
+            <span>Планируемая дата отгрузки</span>
+            <input type="date" value={plannedShipDate} onChange={(e) => setPlannedShipDate(e.target.value)} />
           </label>
           <label className="ps-check-field">
             <input type="checkbox" checked={shipped} onChange={(e) => {
