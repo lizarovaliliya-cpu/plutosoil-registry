@@ -26,6 +26,15 @@ const locationLabel = (l) => (l ? `${l.type === "station" ? "АЗС" : "Скла
 
 const fuelText = (map) => [...map.entries()].map(([fuel, v]) => `${fuel} ${fmtInt(v)} л`).join(", ");
 
+function MiniBattery({ ratio, overdue }) {
+  const level = overdue ? "red" : ratio <= 0.33 ? "green" : ratio <= 0.66 ? "amber" : "red";
+  return (
+    <span className={`ps-batt ps-batt--${level}`}>
+      <span className="ps-batt__fill" style={{ width: `${Math.max(10, Math.min(100, ratio * 100))}%` }} />
+    </span>
+  );
+}
+
 export default function ReportsView({ sales, clients, locations, prices, shipments, onOpenSell }) {
   const [period, setPeriod] = useState("today"); // 'today' | 'yesterday' | 'custom'
   const [customFrom, setCustomFrom] = useState("");
@@ -89,17 +98,17 @@ export default function ReportsView({ sales, clients, locations, prices, shipmen
     return buckets;
   }, [pendingGroups]);
 
-  /* ---- визуальный календарь: объём/кол-во сделок по каждой дате ---- */
+  /* ---- визуальный календарь: кол-во сделок и объём по каждому виду ---- */
+  /* ---- топлива на каждую дату ---- */
   const volumeByDate = useMemo(() => {
     const map = new Map();
     pendingGroups.forEach((r) => {
       const d = r.group.plannedShipDate;
       if (!d) return;
-      const volume = [...r.remaining.values()].reduce((a, v) => a + v, 0);
-      if (!map.has(d)) map.set(d, { count: 0, volume: 0 });
+      if (!map.has(d)) map.set(d, { count: 0, byFuel: new Map() });
       const cur = map.get(d);
       cur.count += 1;
-      cur.volume += volume;
+      r.remaining.forEach((vol, fuel) => cur.byFuel.set(fuel, (cur.byFuel.get(fuel) || 0) + vol));
     });
     return map;
   }, [pendingGroups]);
@@ -118,9 +127,13 @@ export default function ReportsView({ sales, clients, locations, prices, shipmen
     return cells;
   }, [calMonth]);
 
-  const monthMaxVolume = useMemo(() => {
-    let max = 0;
-    monthGrid.forEach((iso) => { const v = iso && volumeByDate.get(iso)?.volume; if (v > max) max = v; });
+  const monthMaxByFuel = useMemo(() => {
+    const max = new Map();
+    monthGrid.forEach((iso) => {
+      const stat = iso && volumeByDate.get(iso);
+      if (!stat) return;
+      stat.byFuel.forEach((v, fuel) => { if (v > (max.get(fuel) || 0)) max.set(fuel, v); });
+    });
     return max;
   }, [monthGrid, volumeByDate]);
 
@@ -259,19 +272,29 @@ export default function ReportsView({ sales, clients, locations, prices, shipmen
             if (!iso) return <div key={idx} className="ps-cal-cell ps-cal-cell--empty" />;
             const stat = volumeByDate.get(iso);
             const isToday = iso === todayIso();
-            const isOverdue = iso < todayIso() && stat;
-            const ratio = stat && monthMaxVolume > 0 ? stat.volume / monthMaxVolume : 0;
+            const isOverdue = !!(iso < todayIso() && stat);
             const dayNum = +iso.slice(8, 10);
-            const bg = !stat ? undefined : isOverdue
-              ? `rgba(193,59,59,${(0.15 + ratio * 0.5).toFixed(2)})`
-              : `rgba(232,135,30,${(0.12 + ratio * 0.55).toFixed(2)})`;
+            const fuelRows = stat ? FUELS.filter((f) => stat.byFuel.has(f)) : [];
             return (
               <button key={iso} type="button" disabled={!stat}
-                className={`ps-cal-cell ${isToday ? "ps-cal-cell--today" : ""} ${selectedDay === iso ? "ps-cal-cell--selected" : ""}`}
-                style={{ background: bg }}
+                className={`ps-cal-cell ${isToday ? "ps-cal-cell--today" : ""} ${isOverdue ? "ps-cal-cell--overdue" : ""} ${selectedDay === iso ? "ps-cal-cell--selected" : ""}`}
                 onClick={() => setSelectedDay((d) => (d === iso ? null : iso))}>
-                <span className="ps-cal-cell__num">{dayNum}</span>
-                {stat && <span className="ps-cal-cell__stat">{stat.count} · {fmtInt(stat.volume)} л</span>}
+                <div className="ps-cal-cell__top">
+                  <span className="ps-cal-cell__num">{dayNum}</span>
+                  {stat && <span className="ps-cal-cell__count">{stat.count}</span>}
+                </div>
+                {fuelRows.map((fuel) => {
+                  const vol = stat.byFuel.get(fuel);
+                  const max = monthMaxByFuel.get(fuel) || 0;
+                  const ratio = max > 0 ? vol / max : 1;
+                  return (
+                    <div key={fuel} className="ps-cal-cell__fuel">
+                      <span className="ps-cal-cell__fuel-label">{fuel}</span>
+                      <MiniBattery ratio={ratio} overdue={isOverdue} />
+                      <span className="ps-cal-cell__fuel-vol">{fmtInt(vol)}л</span>
+                    </div>
+                  );
+                })}
               </button>
             );
           })}

@@ -800,15 +800,27 @@ function GlobalStyle() {
       .ps-cal-widget__title { font-family: var(--font-display); font-weight:600; font-size:14px; color: var(--petrol); min-width:150px; text-align:center; }
       .ps-cal-grid { display:grid; grid-template-columns: repeat(7, 1fr); gap:5px; }
       .ps-cal-grid__wd { text-align:center; font-size:10.5px; color:#8A94A0; font-weight:600; padding-bottom:2px; }
-      .ps-cal-cell { position:relative; min-height:58px; border:1px solid var(--line); border-radius:8px; background: var(--paper); display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; gap:4px; padding:6px 7px; font-family: var(--font-body); }
+      .ps-cal-cell { position:relative; min-height:86px; border:1px solid var(--line); border-radius:8px; background: var(--paper); display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start; gap:3px; padding:6px 7px; font-family: var(--font-body); }
       .ps-cal-cell--empty { border-color:transparent; background:transparent; }
       button.ps-cal-cell { cursor:pointer; }
       button.ps-cal-cell:disabled { cursor:default; }
       button.ps-cal-cell:not(:disabled):hover { border-color: var(--petrol-2); }
       .ps-cal-cell--today { border:2px solid var(--petrol-2); }
+      .ps-cal-cell--overdue { background:rgba(193,59,59,0.06); border-color:#E9BABA; }
       .ps-cal-cell--selected { outline:2px solid var(--petrol); outline-offset:-2px; }
+      .ps-cal-cell__top { display:flex; align-items:center; justify-content:space-between; width:100%; }
       .ps-cal-cell__num { font-size:11.5px; font-weight:600; color: var(--ink); }
-      .ps-cal-cell__stat { font-size:9.5px; color: var(--ink); font-family: var(--font-mono); line-height:1.3; }
+      .ps-cal-cell__count { font-size:9px; font-weight:700; background: var(--petrol-2); color:#fff; border-radius:8px; padding:1px 5px; line-height:1.4; }
+      .ps-cal-cell--overdue .ps-cal-cell__count { background: var(--red); }
+      .ps-cal-cell__fuel { display:flex; align-items:center; gap:4px; width:100%; }
+      .ps-cal-cell__fuel-label { font-size:8.5px; color:#5B6770; font-weight:600; min-width:30px; text-align:left; }
+      .ps-cal-cell__fuel-vol { font-size:8.5px; color: var(--ink); font-family: var(--font-mono); margin-left:auto; white-space:nowrap; }
+      .ps-batt { position:relative; display:inline-block; width:18px; height:9px; border:1px solid #ADB8C0; border-radius:2px; background:#fff; flex-shrink:0; }
+      .ps-batt::after { content:""; position:absolute; right:-3px; top:2px; width:2px; height:3px; background:#ADB8C0; border-radius:0 1px 1px 0; }
+      .ps-batt__fill { position:absolute; left:1px; top:1px; bottom:1px; border-radius:1px; }
+      .ps-batt--green .ps-batt__fill { background: var(--green); }
+      .ps-batt--amber .ps-batt__fill { background: var(--amber); }
+      .ps-batt--red .ps-batt__fill { background: var(--red); }
       .ps-period-summary__divider { width:1px; height:20px; background:rgba(255,255,255,0.2); }
       .ps-history__row-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
       .ps-req-toggle { display:flex; align-items:center; gap:6px; border:none; background:transparent; color: var(--petrol-2); font-size:12.5px; font-weight:600; cursor:pointer; padding:4px 0; align-self:flex-start; }
