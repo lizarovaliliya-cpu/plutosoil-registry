@@ -908,10 +908,10 @@ function GlobalStyle() {
       .ps-ship-btn:hover { text-decoration:underline; }
       .ps-shipment-row { display:grid; grid-template-columns: 18px 1fr 1.6fr 1fr 1fr auto auto; gap:8px; align-items:center; background: var(--panel); border:1px solid var(--line); border-radius:9px; padding:8px 10px; font-size:12.5px; }
       .ps-limits { display:flex; gap:20px; align-items:flex-start; padding:16px 22px 24px; }
-      .ps-limits__side { width:300px; flex-shrink:0; display:flex; flex-direction:column; }
+      .ps-limits__side { width:300px; flex-shrink:0; display:flex; flex-direction:column; position:sticky; top:16px; max-height:calc(100vh - 32px); overflow-y:auto; }
       .ps-limits__main { flex:1; min-width:0; display:flex; flex-direction:column; gap:14px; }
       .ps-limits__searchresults { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background: var(--panel); padding:5px; }
-      .ps-limits__list { display:flex; flex-direction:column; gap:5px; max-height:calc(100vh - 280px); overflow:auto; }
+      .ps-limits__list { display:flex; flex-direction:column; gap:5px; }
       .ps-limits__client-row { display:flex; flex-direction:column; align-items:flex-start; gap:2px; border:1px solid var(--line); background: var(--panel); border-radius:10px; padding:9px 11px; text-align:left; cursor:pointer; font-family: var(--font-body); font-size:13px; color: var(--ink); width:100%; }
       .ps-limits__client-row:hover { border-color: var(--petrol-2); }
       .ps-limits__client-row--on { border-color: var(--petrol-2); background:#EAF3F8; }
