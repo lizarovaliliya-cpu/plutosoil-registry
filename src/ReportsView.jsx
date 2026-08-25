@@ -104,11 +104,12 @@ export default function ReportsView({ sales, clients, locations, prices, shipmen
       const totalVolume = (g.items || []).reduce((a, it) => a + toNum(it.volume), 0);
       const shippedVolume = (shipmentsByGroup.get(g.id) || []).reduce((a, s) => a + toNum(s.volume), 0);
       const isFullyShipped = !!g.shipped || (totalVolume > 0 && shippedVolume >= totalVolume - 0.001);
-      if (!map.has(d)) map.set(d, { count: 0, totalVolume: 0, allShipped: true });
+      if (!map.has(d)) map.set(d, { count: 0, totalVolume: 0, allShipped: true, byFuel: new Map() });
       const cur = map.get(d);
       cur.count += 1;
       cur.totalVolume += totalVolume;
       if (!isFullyShipped) cur.allShipped = false;
+      (g.items || []).forEach((it) => cur.byFuel.set(it.fuel, (cur.byFuel.get(it.fuel) || 0) + toNum(it.volume)));
     });
     const today = todayIso();
     map.forEach((cur, d) => { cur.status = cur.allShipped ? "shipped" : d < today ? "overdue" : "planned"; });
@@ -287,7 +288,9 @@ export default function ReportsView({ sales, clients, locations, prices, shipmen
                     <span className="ps-cal-cell__num">{dayNum}</span>
                     {info && <span className="ps-cal-cell__count" style={{ background: STATUS_COLOR[info.status] }}>{info.count}</span>}
                   </div>
-                  {info && <span className="ps-cal-cell__stat">{fmtInt(info.totalVolume)} л</span>}
+                  {info && FUELS.filter((f) => info.byFuel.has(f)).map((f) => (
+                    <span key={f} className="ps-cal-cell__stat">{f} {fmtInt(info.byFuel.get(f))}л</span>
+                  ))}
                 </div>
               </button>
             );
