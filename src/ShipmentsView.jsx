@@ -1,8 +1,25 @@
 import React, { useState, useMemo } from "react";
 import { Download, FileSpreadsheet, CalendarRange, CalendarClock, AlertTriangle, ChevronLeft, ChevronRight, Fuel as FuelIcon, Truck } from "lucide-react";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { fmtInt, toNum, colorForName } from "./utils.js";
 import { FUELS, DENSITY } from "./shared.jsx";
+
+/* ---- фирменные цвета документа (в ARGB, как требует exceljs) ---- */
+const BRAND = {
+  petrol: "FF0E3A53",
+  petrolLight: "FFEAF3F8",
+  amber: "FFE8871E",
+  amberLight: "FFFBEEDA",
+  red: "FFC13B3B",
+  redLight: "FFFBE4E4",
+  green: "FF1E8A56",
+  greenLight: "FFE1F4EA",
+  grey: "FF8A94A0",
+  stripe: "FFF6F8F9",
+  border: "FFDEE4E9",
+  white: "FFFFFFFF",
+  ink: "FF10151C",
+};
 
 const MONTH_NAMES = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 const WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
@@ -27,7 +44,7 @@ const fuelText = (map) => [...map.entries()].map(([fuel, v]) => `${fuel} ${fmtIn
 
 const STATUS_COLOR = { overdue: "#C13B3B", planned: "#E8871E", shipped: "#1E8A56" };
 
-export default function ShipmentsView({ sales, clients, prices, shipments, onOpenSell }) {
+export default function ShipmentsView({ sales, clients, prices, shipments, companyProfile, onOpenSell }) {
   const [planWindow, setPlanWindow] = useState("7"); // 'today' | '7' | '30' | 'all' | 'custom' — на сколько вперёд планируем
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -236,34 +253,111 @@ export default function ShipmentsView({ sales, clients, prices, shipments, onOpe
 
   const fileTag = planWindow === "custom" ? `${customFrom}_${customTo}` : `${todayIso()}_${planWindow}`;
 
-  const exportExcel = () => {
-    const summaryHeaders = ["Вид топлива", "Нужно, л", "≈ Тонн"];
-    const summaryBody = FUELS.map((f) => {
-      const vol = neededByFuel.get(f);
-      const d = densityFor(f);
-      return [f, vol, d > 0 ? +((vol * d) / 1000).toFixed(3) : ""];
-    });
-    summaryBody.push(["ИТОГО", totalNeeded, ""]);
-    const ws1 = XLSX.utils.aoa_to_sheet([summaryHeaders, ...summaryBody]);
-    ws1["!cols"] = summaryHeaders.map(() => ({ wch: 18 }));
+  const companyName = companyProfile?.name || "PlutosOil";
+  const generatedAt = new Date().toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
-    const detailHeaders = ["Дата отгрузки", "Клиент", "Телефон", "Топливо и остаток", "Сумма остатка, ₽", "Менеджер", "Комментарий"];
-    const detailBody = [];
-    reportBuckets.forEach((bucket) => {
-      bucket.rows.forEach((r) => {
-        const client = clientById.get(r.group.clientId);
-        detailBody.push([
-          bucket.tone === "overdue" ? `Просрочено (было ${shortDate(r.group.plannedShipDate)})` : bucket.tone === "nodate" ? "Без даты" : bucket.label,
-          client?.company || "Клиент удалён", client?.phone || "", fuelText(r.remaining),
-          Math.round(remainingSum(r)), r.group.createdBy || "", r.group.comment || "",
-        ]);
+  const TONE_STYLE = {
+    overdue: { argb: BRAND.red, fill: BRAND.redLight },
+    nodate: { argb: BRAND.amber, fill: BRAND.amberLight },
+    today: { argb: BRAND.petrol, fill: BRAND.petrolLight },
+    future: { argb: BRAND.ink, fill: null },
+  };
+
+  const thinBorder = { style: "thin", color: { argb: BRAND.border } };
+  const cellBorder = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
+
+  /* ---- фирменная шапка листа: название компании + заголовок отчёта ---- */
+  const addBrandHeader = (ws, numCols, reportTitle, subtitleLines) => {
+    ws.mergeCells(1, 1, 1, numCols);
+    const title = ws.getCell(1, 1);
+    title.value = companyName;
+    title.font = { name: "Calibri", size: 18, bold: true, color: { argb: BRAND.white } };
+    title.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND.petrol } };
+    title.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+    ws.getRow(1).height = 32;
+
+    ws.mergeCells(2, 1, 2, numCols);
+    const subtitle = ws.getCell(2, 1);
+    subtitle.value = reportTitle;
+    subtitle.font = { size: 13, bold: true, color: { argb: BRAND.petrol } };
+    subtitle.alignment = { vertical: "middle", indent: 1 };
+    ws.getRow(2).height = 22;
+
+    let row = 3;
+    subtitleLines.forEach((line) => {
+      ws.mergeCells(row, 1, row, numCols);
+      const c = ws.getCell(row, 1);
+      c.value = line;
+      c.font = { size: 10.5, color: { argb: BRAND.grey } };
+      c.alignment = { indent: 1 };
+      row += 1;
+    });
+    return row + 1; // строка для шапки таблицы (с одной пустой строкой-отступом)
+  };
+
+  /* ---- стилизованная таблица: цветная шапка, границы, чередование строк ---- */
+  const writeTable = (ws, startRow, headers, rows, { toneCol = null, totalsRow = false } = {}) => {
+    const headerRow = ws.getRow(startRow);
+    headers.forEach((h, i) => {
+      const cell = headerRow.getCell(i + 1);
+      cell.value = h;
+      cell.font = { bold: true, size: 10.5, color: { argb: BRAND.white } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND.petrol } };
+      cell.alignment = { vertical: "middle", horizontal: i === 0 ? "left" : "center", wrapText: true };
+      cell.border = cellBorder;
+    });
+    headerRow.height = 28;
+    ws.autoFilter = { from: { row: startRow, column: 1 }, to: { row: startRow, column: headers.length } };
+    ws.views = [{ state: "frozen", ySplit: startRow }];
+
+    rows.forEach((r, idx) => {
+      const isTotals = totalsRow && idx === rows.length - 1;
+      const row = ws.getRow(startRow + 1 + idx);
+      const tone = toneCol != null ? TONE_STYLE[r[toneCol + 100]] : null; // r[toneCol+100] — служебное поле с тоном, не выводится
+      r.forEach((val, ci) => {
+        if (ci >= headers.length) return; // пропускаем служебные поля тона
+        const cell = row.getCell(ci + 1);
+        cell.value = val;
+        cell.border = cellBorder;
+        cell.font = {
+          size: 10.5,
+          bold: isTotals,
+          color: { argb: !isTotals && toneCol === ci && tone ? tone.argb : BRAND.ink },
+        };
+        cell.alignment = { horizontal: typeof val === "number" ? "right" : "left", vertical: "middle" };
+        if (typeof val === "number") cell.numFmt = "#,##0";
+        if (isTotals) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND.petrolLight } };
+        else if (idx % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BRAND.stripe } };
       });
     });
-    const ws2 = XLSX.utils.aoa_to_sheet([detailHeaders, ...detailBody]);
-    ws2["!cols"] = detailHeaders.map(() => ({ wch: 20 }));
+  };
 
-    const dayHeaders = ["Дата", ...FUELS.map((f) => `${f}, л`), "Итого, л", "Клиентов", "Сумма остатка, ₽"];
-    const dayBody = reportBuckets.map((bucket) => {
+  const downloadWorkbook = async (wb, filename) => {
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportExcel = async () => {
+    const wb = new ExcelJS.Workbook();
+    wb.creator = companyName;
+    wb.created = new Date();
+
+    const subtitleLines = [`План отгрузок для склада · ${windowLabel}`, `Сформировано ${generatedAt}`];
+
+    // Лист 1 — По дням
+    const ws1 = wb.addWorksheet("По дням");
+    const dayHeaders = ["День", ...FUELS.map((f) => `${f}, л`), "Итого, л", "Клиентов", "Остаток, ₽"];
+    ws1.columns = [{ width: 22 }, ...FUELS.map(() => ({ width: 14 })), { width: 12 }, { width: 11 }, { width: 15 }];
+    const startRow1 = addBrandHeader(ws1, dayHeaders.length, "Потребность в топливе по дням", subtitleLines);
+    const dayRows = reportBuckets.map((bucket) => {
       const byFuelDay = new Map(FUELS.map((f) => [f, 0]));
       let sum = 0;
       bucket.rows.forEach((r) => {
@@ -271,17 +365,48 @@ export default function ShipmentsView({ sales, clients, prices, shipments, onOpe
         sum += remainingSum(r);
       });
       const dayTotal = FUELS.reduce((a, f) => a + byFuelDay.get(f), 0);
-      return [bucket.label, ...FUELS.map((f) => byFuelDay.get(f)), dayTotal, bucket.rows.length, Math.round(sum)];
+      const row = [bucket.label, ...FUELS.map((f) => byFuelDay.get(f)), dayTotal, bucket.rows.length, Math.round(sum)];
+      row[100] = bucket.tone;
+      return row;
     });
-    dayBody.push(["ИТОГО", ...FUELS.map((f) => neededByFuel.get(f)), totalNeeded, reportRows.length, Math.round(totalNeededSum)]);
-    const ws3 = XLSX.utils.aoa_to_sheet([dayHeaders, ...dayBody]);
-    ws3["!cols"] = dayHeaders.map(() => ({ wch: 16 }));
+    dayRows.push(["ИТОГО", ...FUELS.map((f) => neededByFuel.get(f)), totalNeeded, reportRows.length, Math.round(totalNeededSum)]);
+    writeTable(ws1, startRow1, dayHeaders, dayRows, { toneCol: 0, totalsRow: true });
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws3, "По дням");
-    XLSX.utils.book_append_sheet(wb, ws1, "Потребность по топливу");
-    XLSX.utils.book_append_sheet(wb, ws2, "Детализация по клиентам");
-    XLSX.writeFile(wb, `PlutosOil_план_отгрузок_${fileTag}.xlsx`);
+    // Лист 2 — Потребность по топливу
+    const ws2 = wb.addWorksheet("Потребность по топливу");
+    const fuelHeaders = ["Вид топлива", "Нужно, л", "≈ Тонн"];
+    ws2.columns = [{ width: 18 }, { width: 14 }, { width: 12 }];
+    const startRow2 = addBrandHeader(ws2, fuelHeaders.length, "Потребность по видам топлива", subtitleLines);
+    const fuelRows = FUELS.map((f) => {
+      const vol = neededByFuel.get(f);
+      const d = densityFor(f);
+      return [f, vol, d > 0 ? +((vol * d) / 1000).toFixed(3) : ""];
+    });
+    fuelRows.push(["ИТОГО", totalNeeded, ""]);
+    writeTable(ws2, startRow2, fuelHeaders, fuelRows, { totalsRow: true });
+
+    // Лист 3 — Детализация по клиентам
+    const ws3 = wb.addWorksheet("Детализация по клиентам");
+    const detailHeaders = ["Дата отгрузки", "Клиент", "Телефон", "Топливо и остаток", "Остаток, ₽", "Менеджер", "Комментарий"];
+    ws3.columns = [{ width: 20 }, { width: 26 }, { width: 15 }, { width: 26 }, { width: 13 }, { width: 14 }, { width: 26 }];
+    const startRow3 = addBrandHeader(ws3, detailHeaders.length, "Детализация неотгруженного остатка", subtitleLines);
+    const detailRows = [];
+    reportBuckets.forEach((bucket) => {
+      bucket.rows.forEach((r) => {
+        const client = clientById.get(r.group.clientId);
+        const row = [
+          bucket.tone === "overdue" ? `Просрочено (было ${shortDate(r.group.plannedShipDate)})` : bucket.tone === "nodate" ? "Без даты" : bucket.label,
+          client?.company || "Клиент удалён", client?.phone || "", fuelText(r.remaining),
+          Math.round(remainingSum(r)), r.group.createdBy || "", r.group.comment || "",
+        ];
+        row[100] = bucket.tone;
+        detailRows.push(row);
+      });
+    });
+    writeTable(ws3, startRow3, detailHeaders, detailRows, { toneCol: 0 });
+
+    const safeName = companyName.replace(/["'«»/\\:*?<>|]/g, "").trim() || "PlutosOil";
+    await downloadWorkbook(wb, `${safeName}_план_отгрузок_${fileTag}.xlsx`);
   };
 
   return (

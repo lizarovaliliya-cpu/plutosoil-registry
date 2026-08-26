@@ -680,6 +680,7 @@ export default function App() {
           ) : view === "shipments" ? (
             <ShipmentsView
               sales={sales} clients={clients} locations={locations} prices={prices} shipments={shipments}
+              companyProfile={companyProfile}
               onOpenSell={(clientId, group) => setSellModal({ clientId, group })}
             />
           ) : view === "reports" ? (
