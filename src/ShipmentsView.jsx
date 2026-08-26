@@ -396,11 +396,15 @@ export default function ShipmentsView({ sales, clients, locations, prices, shipm
         <div className="ps-chips">
           <button className={`ps-chip ${period === "today" ? "ps-chip--on" : ""}`} onClick={() => setPeriod("today")}>Сегодня</button>
           <button className={`ps-chip ${period === "yesterday" ? "ps-chip--on" : ""}`} onClick={() => setPeriod("yesterday")}>Вчера</button>
+          <button className={`ps-chip ${period === "custom" && customFrom === daysAgoIso(6) ? "ps-chip--on" : ""}`}
+            onClick={() => { setPeriod("custom"); setCustomFrom(daysAgoIso(6)); setCustomTo(todayIso()); }}>7 дней</button>
+          <button className={`ps-chip ${period === "custom" && customFrom === daysAgoIso(29) ? "ps-chip--on" : ""}`}
+            onClick={() => { setPeriod("custom"); setCustomFrom(daysAgoIso(29)); setCustomTo(todayIso()); }}>30 дней</button>
           <button className={`ps-chip ${period === "custom" ? "ps-chip--on" : ""}`} onClick={openCustomPeriod}><CalendarRange size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Период</button>
         </div>
         <button className={`ps-chip ${onlyUnshipped ? "ps-chip--on" : ""}`} onClick={() => setOnlyUnshipped((v) => !v)}>Не отгружено</button>
         <div className="ps-toolbar__spacer" />
-        <button className="ps-btn ps-btn--primary" style={{ width: "auto" }} onClick={exportExcel}>
+        <button className="ps-btn ps-btn--primary" style={{ width: "auto" }} disabled={periodGroups.length === 0} onClick={exportExcel}>
           <Download size={15} /> Скачать Excel для логистики
         </button>
       </div>
@@ -411,6 +415,9 @@ export default function ShipmentsView({ sales, clients, locations, prices, shipm
             <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
             <span>—</span>
             <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+            {customFrom && customTo && customFrom > customTo && (
+              <span style={{ color: "#C13B3B", fontSize: 12 }}>Дата «с» позже даты «по» — период пуст</span>
+            )}
           </div>
         </div>
       )}
