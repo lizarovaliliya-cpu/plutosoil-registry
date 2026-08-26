@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { Download, FileSpreadsheet, CalendarRange, CalendarClock, AlertTriangle, ChevronLeft, ChevronRight, Fuel as FuelIcon, Truck } from "lucide-react";
 import * as XLSX from "xlsx";
 import { fmtInt, toNum, colorForName } from "./utils.js";
-import { FUELS, DENSITY, CONTAINER_LABELS } from "./shared.jsx";
+import { FUELS, DENSITY } from "./shared.jsx";
 
 const MONTH_NAMES = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 const WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
@@ -13,8 +13,8 @@ const isoOf = (d) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 const todayIso = () => isoOf(new Date());
-const yesterdayIso = () => { const d = new Date(); d.setDate(d.getDate() - 1); return isoOf(d); };
 const daysAgoIso = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return isoOf(d); };
+const daysFromNowIso = (n) => daysAgoIso(-n);
 
 const shortDate = (iso) => {
   const d = new Date(iso + "T00:00:00");
@@ -23,28 +23,24 @@ const shortDate = (iso) => {
   return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}`;
 };
 
-const locationLabel = (l) => (l ? `${l.type === "station" ? "АЗС" : "Склад"} · ${l.name}` : "Без склада");
-
 const fuelText = (map) => [...map.entries()].map(([fuel, v]) => `${fuel} ${fmtInt(v)} л`).join(", ");
 
 const STATUS_COLOR = { overdue: "#C13B3B", planned: "#E8871E", shipped: "#1E8A56" };
 
-export default function ShipmentsView({ sales, clients, locations, prices, shipments, onOpenSell }) {
-  const [period, setPeriod] = useState("today"); // 'today' | 'yesterday' | 'custom'
+export default function ShipmentsView({ sales, clients, prices, shipments, onOpenSell }) {
+  const [planWindow, setPlanWindow] = useState("7"); // 'today' | '7' | '30' | 'all' | 'custom' — на сколько вперёд планируем
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-  const [onlyUnshipped, setOnlyUnshipped] = useState(false);
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [selectedDay, setSelectedDay] = useState(null); // iso date | "overdue" | "nodate" | null
 
-  const openCustomPeriod = () => {
-    setPeriod("custom");
+  const openCustomWindow = () => {
+    setPlanWindow("custom");
     if (!customFrom) setCustomFrom(todayIso());
-    if (!customTo) setCustomTo(todayIso());
+    if (!customTo) setCustomTo(daysFromNowIso(29));
   };
 
   const clientById = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
-  const locationById = useMemo(() => new Map((locations || []).map((l) => [l.id, l])), [locations]);
   const densityFor = (fuel) => toNum((prices || []).find((p) => p.fuel === fuel)?.density) || DENSITY[fuel] || 0;
 
   /* ---- календарь отгрузок: сделки с ещё не отгруженным остатком, ---- */
@@ -176,126 +172,140 @@ export default function ShipmentsView({ sales, clients, locations, prices, shipm
 
   const visibleBuckets = !selectedDay ? calendarBuckets : calendarBuckets.filter((b) => b.key === selectedDay);
 
-  const periodGroups = useMemo(() => {
-    let out = sales;
-    if (period === "today") out = out.filter((s) => s.saleDate === todayIso());
-    else if (period === "yesterday") out = out.filter((s) => s.saleDate === yesterdayIso());
-    else if (period === "custom") {
-      out = out.filter((s) => (!customFrom || s.saleDate >= customFrom) && (!customTo || s.saleDate <= customTo));
-    }
-    if (onlyUnshipped) out = out.filter((s) => !s.shipped);
-    return [...out].sort((a, b) => (a.saleDate || "").localeCompare(b.saleDate || ""));
-  }, [sales, period, customFrom, customTo, onlyUnshipped]);
-
-  const periodItems = useMemo(
-    () => periodGroups.flatMap((g) => (g.items || []).map((it) => ({ ...it, group: g }))),
-    [periodGroups]
-  );
-
-  const byFuel = useMemo(() => {
-    const map = new Map(FUELS.map((f) => [f, { volume: 0, sum: 0 }]));
-    periodItems.forEach((it) => {
-      if (!map.has(it.fuel)) return;
-      const m = map.get(it.fuel);
-      m.volume += toNum(it.volume);
-      m.sum += toNum(it.sum);
+  /* ---- сумма ещё не отгруженного остатка по сделке (по цене её же ---- */
+  /* ---- позиций) — для отображения "на сколько ₽ ещё нужно отгрузить" ---- */
+  const remainingSum = (r) => {
+    let sum = 0;
+    r.remaining.forEach((vol, fuel) => {
+      const item = (r.group.items || []).find((it) => it.fuel === fuel);
+      sum += vol * toNum(item?.price);
     });
+    return sum;
+  };
+
+  /* ---- отчёт для склада: сколько топлива нужно приготовить и когда. ---- */
+  /* ---- Просрочено и без даты показываются всегда целиком (это уже ---- */
+  /* ---- горит), а окно "7/30 дней/период" сужает только сами даты. ---- */
+  const windowFrom = planWindow === "custom" ? customFrom : todayIso();
+  const windowTo = planWindow === "today" ? todayIso()
+    : planWindow === "7" ? daysFromNowIso(6)
+    : planWindow === "30" ? daysFromNowIso(29)
+    : planWindow === "custom" ? customTo
+    : null; // 'all' — без верхней границы
+
+  const reportBuckets = useMemo(() => {
+    const today = todayIso();
+    const overdue = [];
+    const noDate = [];
+    const byDate = new Map();
+    pendingGroups.forEach((r) => {
+      const d = r.group.plannedShipDate;
+      if (!d) { noDate.push(r); return; }
+      if (d < today) { overdue.push(r); return; }
+      if (windowFrom && d < windowFrom) return;
+      if (windowTo && d > windowTo) return;
+      if (!byDate.has(d)) byDate.set(d, []);
+      byDate.get(d).push(r);
+    });
+    overdue.sort((a, b) => (a.group.plannedShipDate || "").localeCompare(b.group.plannedShipDate || ""));
+    const dateBuckets = [...byDate.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const buckets = [];
+    if (overdue.length) buckets.push({ key: "overdue", label: "Просрочено", rows: overdue, tone: "overdue" });
+    if (noDate.length) buckets.push({ key: "nodate", label: "Без даты", rows: noDate, tone: "nodate" });
+    dateBuckets.forEach(([d, rows]) => buckets.push({ key: d, label: d === today ? "Сегодня" : shortDate(d), rows, tone: d === today ? "today" : "future" }));
+    return buckets;
+  }, [pendingGroups, planWindow, windowFrom, windowTo]);
+
+  const reportRows = useMemo(() => reportBuckets.flatMap((b) => b.rows), [reportBuckets]);
+
+  const neededByFuel = useMemo(() => {
+    const map = new Map(FUELS.map((f) => [f, 0]));
+    reportRows.forEach((r) => r.remaining.forEach((vol, fuel) => { if (map.has(fuel)) map.set(fuel, map.get(fuel) + vol); }));
     return map;
-  }, [periodItems]);
+  }, [reportRows]);
 
-  const totalVolume = FUELS.reduce((a, f) => a + byFuel.get(f).volume, 0);
-  const totalSum = periodItems.reduce((a, it) => a + toNum(it.sum), 0);
-  const shippedCount = periodGroups.filter((g) => g.shipped).length;
+  const totalNeeded = FUELS.reduce((a, f) => a + neededByFuel.get(f), 0);
+  const totalNeededSum = reportRows.reduce((a, r) => a + remainingSum(r), 0);
+  const overdueRowCount = reportBuckets.find((b) => b.key === "overdue")?.rows.length || 0;
 
-  /* ---- та же потребность, но разбитая по дням и клиентам — единый ---- */
-  /* ---- источник и для отображения на экране, и для Excel-выгрузки ---- */
-  const dayGroups = useMemo(() => {
-    const map = new Map();
-    periodGroups.forEach((g) => {
-      const d = g.saleDate || "";
-      if (!map.has(d)) map.set(d, { groups: [], byFuel: new Map(), sum: 0 });
-      const cur = map.get(d);
-      cur.groups.push(g);
-      (g.items || []).forEach((it) => cur.byFuel.set(it.fuel, (cur.byFuel.get(it.fuel) || 0) + toNum(it.volume)));
-      cur.sum += toNum(g.sum);
-    });
-    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [periodGroups]);
-
-  const periodLabel = period === "today" ? "сегодня"
-    : period === "yesterday" ? "вчера"
+  const windowLabel = planWindow === "today" ? "на сегодня"
+    : planWindow === "7" ? "на ближайшие 7 дней"
+    : planWindow === "30" ? "на ближайшие 30 дней"
+    : planWindow === "all" ? "на весь план"
     : `${shortDate(customFrom)} — ${shortDate(customTo)}`;
 
-  const fileTag = period === "today" ? todayIso()
-    : period === "yesterday" ? yesterdayIso()
-    : `${customFrom}_${customTo}`;
+  const fileTag = planWindow === "custom" ? `${customFrom}_${customTo}` : `${todayIso()}_${planWindow}`;
 
   const exportExcel = () => {
-    const summaryHeaders = ["Вид топлива", "Объём, л", "≈ Тонн", "Сумма, ₽"];
+    const summaryHeaders = ["Вид топлива", "Нужно, л", "≈ Тонн"];
     const summaryBody = FUELS.map((f) => {
-      const m = byFuel.get(f);
+      const vol = neededByFuel.get(f);
       const d = densityFor(f);
-      return [f, m.volume, d > 0 ? +((m.volume * d) / 1000).toFixed(3) : "", m.sum];
+      return [f, vol, d > 0 ? +((vol * d) / 1000).toFixed(3) : ""];
     });
-    summaryBody.push(["ИТОГО", totalVolume, "", totalSum]);
+    summaryBody.push(["ИТОГО", totalNeeded, ""]);
     const ws1 = XLSX.utils.aoa_to_sheet([summaryHeaders, ...summaryBody]);
     ws1["!cols"] = summaryHeaders.map(() => ({ wch: 18 }));
 
-    const detailHeaders = ["Дата", "Клиент", "Склад/АЗС отпуска", "Топливо", "Объём, л", "Тара", "Цена, ₽/л", "Сумма, ₽", "Отгружено", "Дата отгрузки", "Менеджер", "Комментарий"];
-    const detailBody = periodItems.map((it) => [
-      it.group.saleDate,
-      clientById.get(it.group.clientId)?.company || "Клиент удалён",
-      locationLabel(locationById.get(it.locationId)),
-      it.fuel, toNum(it.volume),
-      it.containerMode ? CONTAINER_LABELS[it.containerMode] : "",
-      toNum(it.price), toNum(it.sum),
-      it.group.shipped ? "Да" : "Нет", it.group.shippedDate || "",
-      it.group.createdBy, it.group.comment,
-    ]);
-    const ws2 = XLSX.utils.aoa_to_sheet([detailHeaders, ...detailBody]);
-    ws2["!cols"] = detailHeaders.map(() => ({ wch: 18 }));
-
-    const dayHeaders = ["Дата", ...FUELS.map((f) => `${f}, л`), "Итого, л", "Сделок", "Сумма, ₽"];
-    const dayBody = dayGroups.map(([d, info]) => {
-      const dayTotal = FUELS.reduce((a, f) => a + (info.byFuel.get(f) || 0), 0);
-      return [shortDate(d), ...FUELS.map((f) => info.byFuel.get(f) || 0), dayTotal, info.groups.length, info.sum];
+    const detailHeaders = ["Дата отгрузки", "Клиент", "Телефон", "Топливо и остаток", "Сумма остатка, ₽", "Менеджер", "Комментарий"];
+    const detailBody = [];
+    reportBuckets.forEach((bucket) => {
+      bucket.rows.forEach((r) => {
+        const client = clientById.get(r.group.clientId);
+        detailBody.push([
+          bucket.tone === "overdue" ? `Просрочено (было ${shortDate(r.group.plannedShipDate)})` : bucket.tone === "nodate" ? "Без даты" : bucket.label,
+          client?.company || "Клиент удалён", client?.phone || "", fuelText(r.remaining),
+          Math.round(remainingSum(r)), r.group.createdBy || "", r.group.comment || "",
+        ]);
+      });
     });
-    dayBody.push(["ИТОГО", ...FUELS.map((f) => byFuel.get(f).volume), totalVolume, periodGroups.length, totalSum]);
+    const ws2 = XLSX.utils.aoa_to_sheet([detailHeaders, ...detailBody]);
+    ws2["!cols"] = detailHeaders.map(() => ({ wch: 20 }));
+
+    const dayHeaders = ["Дата", ...FUELS.map((f) => `${f}, л`), "Итого, л", "Клиентов", "Сумма остатка, ₽"];
+    const dayBody = reportBuckets.map((bucket) => {
+      const byFuelDay = new Map(FUELS.map((f) => [f, 0]));
+      let sum = 0;
+      bucket.rows.forEach((r) => {
+        r.remaining.forEach((vol, fuel) => { if (byFuelDay.has(fuel)) byFuelDay.set(fuel, byFuelDay.get(fuel) + vol); });
+        sum += remainingSum(r);
+      });
+      const dayTotal = FUELS.reduce((a, f) => a + byFuelDay.get(f), 0);
+      return [bucket.label, ...FUELS.map((f) => byFuelDay.get(f)), dayTotal, bucket.rows.length, Math.round(sum)];
+    });
+    dayBody.push(["ИТОГО", ...FUELS.map((f) => neededByFuel.get(f)), totalNeeded, reportRows.length, Math.round(totalNeededSum)]);
     const ws3 = XLSX.utils.aoa_to_sheet([dayHeaders, ...dayBody]);
     ws3["!cols"] = dayHeaders.map(() => ({ wch: 16 }));
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws3, "По дням");
     XLSX.utils.book_append_sheet(wb, ws1, "Потребность по топливу");
-    XLSX.utils.book_append_sheet(wb, ws2, "Детализация по сделкам");
-    XLSX.writeFile(wb, `PlutosOil_отчёт_логистика_${fileTag}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws2, "Детализация по клиентам");
+    XLSX.writeFile(wb, `PlutosOil_план_отгрузок_${fileTag}.xlsx`);
   };
 
   return (
     <>
       <div className="ps-logi-header">
-        <span className="ps-logi-header__title"><Truck size={17} /> Отчёт для логистики</span>
-        <span className="ps-logi-header__sub">Потребность по дням, видам топлива и клиентам</span>
+        <span className="ps-logi-header__title"><Truck size={17} /> План отгрузок для склада</span>
+        <span className="ps-logi-header__sub">Сколько и какого топлива понадобится по дням — чтобы пополнять запас вовремя</span>
       </div>
 
       <div className="ps-toolbar">
         <div className="ps-chips">
-          <button className={`ps-chip ${period === "today" ? "ps-chip--on" : ""}`} onClick={() => setPeriod("today")}>Сегодня</button>
-          <button className={`ps-chip ${period === "yesterday" ? "ps-chip--on" : ""}`} onClick={() => setPeriod("yesterday")}>Вчера</button>
-          <button className={`ps-chip ${period === "custom" && customFrom === daysAgoIso(6) ? "ps-chip--on" : ""}`}
-            onClick={() => { setPeriod("custom"); setCustomFrom(daysAgoIso(6)); setCustomTo(todayIso()); }}>7 дней</button>
-          <button className={`ps-chip ${period === "custom" && customFrom === daysAgoIso(29) ? "ps-chip--on" : ""}`}
-            onClick={() => { setPeriod("custom"); setCustomFrom(daysAgoIso(29)); setCustomTo(todayIso()); }}>30 дней</button>
-          <button className={`ps-chip ${period === "custom" ? "ps-chip--on" : ""}`} onClick={openCustomPeriod}><CalendarRange size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Период</button>
+          <button className={`ps-chip ${planWindow === "today" ? "ps-chip--on" : ""}`} onClick={() => setPlanWindow("today")}>Сегодня</button>
+          <button className={`ps-chip ${planWindow === "7" ? "ps-chip--on" : ""}`} onClick={() => setPlanWindow("7")}>7 дней</button>
+          <button className={`ps-chip ${planWindow === "30" ? "ps-chip--on" : ""}`} onClick={() => setPlanWindow("30")}>30 дней</button>
+          <button className={`ps-chip ${planWindow === "all" ? "ps-chip--on" : ""}`} onClick={() => setPlanWindow("all")}>Весь план</button>
+          <button className={`ps-chip ${planWindow === "custom" ? "ps-chip--on" : ""}`} onClick={openCustomWindow}><CalendarRange size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Период</button>
         </div>
-        <button className={`ps-chip ${onlyUnshipped ? "ps-chip--on" : ""}`} onClick={() => setOnlyUnshipped((v) => !v)}>Не отгружено</button>
         <div className="ps-toolbar__spacer" />
-        <button className="ps-btn ps-btn--primary" style={{ width: "auto" }} disabled={periodGroups.length === 0} onClick={exportExcel}>
-          <Download size={15} /> Скачать Excel для логистики
+        <button className="ps-btn ps-btn--primary" style={{ width: "auto" }} disabled={reportRows.length === 0} onClick={exportExcel}>
+          <Download size={15} /> Скачать Excel для склада
         </button>
       </div>
 
-      {period === "custom" && (
+      {planWindow === "custom" && (
         <div className="ps-toolbar ps-toolbar--period">
           <div className="ps-period-range">
             <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
@@ -309,75 +319,81 @@ export default function ShipmentsView({ sales, clients, locations, prices, shipm
       )}
 
       <div className="ps-period-summary">
-        <span className="ps-period-summary__label">Итого за {periodLabel}</span>
-        <span className="ps-period-summary__stat"><b>{periodGroups.length}</b> сделок</span>
+        <span className="ps-period-summary__label">Нужно приготовить {windowLabel}</span>
+        <span className="ps-period-summary__stat"><b>{reportRows.length}</b> клиентов</span>
         <span className="ps-period-summary__divider" />
-        <span className="ps-period-summary__stat ps-period-summary__stat--sum"><b>{fmtInt(totalVolume)}</b> л заказано</span>
+        <span className="ps-period-summary__stat ps-period-summary__stat--sum"><b>{fmtInt(totalNeeded)}</b> л к отгрузке</span>
         <span className="ps-period-summary__divider" />
-        <span className="ps-period-summary__stat"><b>{fmtInt(totalSum)}</b> ₽ выручка</span>
-        {periodGroups.length > 0 && (
+        <span className="ps-period-summary__stat"><b>{fmtInt(totalNeededSum)}</b> ₽ остаток к отгрузке</span>
+        {overdueRowCount > 0 && (
           <>
             <span className="ps-period-summary__divider" />
-            <span className="ps-period-summary__stat">отгружено <b>{shippedCount}</b> из {periodGroups.length}</span>
+            <span className="ps-period-summary__stat ps-period-summary__stat--warn"><b>{overdueRowCount}</b> просрочено</span>
           </>
         )}
       </div>
 
       <div className="ps-kpi-grid" style={{ gridTemplateColumns: `repeat(${FUELS.length}, 1fr)` }}>
         {FUELS.map((f) => {
-          const m = byFuel.get(f);
+          const vol = neededByFuel.get(f);
           const d = densityFor(f);
           return (
             <div key={f} className="ps-kpi-card">
-              <div className="ps-kpi-card__label">Потребность {f}</div>
-              <div className="ps-kpi-card__value">{fmtInt(m.volume)} л</div>
-              {d > 0 && <div className="ps-price-row__meta">≈ {((m.volume * d) / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 3 })} т</div>}
+              <div className="ps-kpi-card__label">Нужно {f}</div>
+              <div className="ps-kpi-card__value">{fmtInt(vol)} л</div>
+              {d > 0 && <div className="ps-price-row__meta">≈ {((vol * d) / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 3 })} т</div>}
             </div>
           );
         })}
       </div>
 
-      {dayGroups.length === 0 ? (
+      {reportBuckets.length === 0 ? (
         <div className="ps-empty" style={{ margin: "0 22px 22px" }}>
           <FileSpreadsheet size={16} style={{ verticalAlign: -3, marginRight: 6 }} />
-          За этот период сделок нет.
+          На этот план нет неотгруженных сделок.
         </div>
       ) : (
         <div className="ps-logi-days">
-          {dayGroups.map(([d, info]) => {
-            const dayTotal = FUELS.reduce((a, f) => a + (info.byFuel.get(f) || 0), 0);
-            const date = new Date(d + "T00:00:00");
+          {reportBuckets.map((bucket) => {
+            const byFuelDay = new Map(FUELS.map((f) => [f, 0]));
+            let daySum = 0;
+            bucket.rows.forEach((r) => {
+              r.remaining.forEach((vol, fuel) => { if (byFuelDay.has(fuel)) byFuelDay.set(fuel, byFuelDay.get(fuel) + vol); });
+              daySum += remainingSum(r);
+            });
+            const dayTotal = FUELS.reduce((a, f) => a + byFuelDay.get(f), 0);
             return (
-              <div key={d} className="ps-sell-section ps-logi-day">
+              <div key={bucket.key} className="ps-sell-section ps-logi-day">
                 <div className="ps-logi-day__head">
                   <div className="ps-logi-day__date">
-                    <span className="ps-logi-day__date-main">{shortDate(d)}</span>
-                    {!isNaN(date) && <span className="ps-logi-day__date-week">{WEEKDAY_FULL[date.getDay()]}</span>}
+                    <span className={`ps-logi-day__date-main ps-cal-title--${bucket.tone}`}>
+                      {bucket.tone === "overdue" && <AlertTriangle size={13} style={{ verticalAlign: -2, marginRight: 4 }} />}
+                      {bucket.label}
+                    </span>
+                    {bucket.tone === "future" || bucket.tone === "today" ? (
+                      <span className="ps-logi-day__date-week">{WEEKDAY_FULL[new Date(bucket.key + "T00:00:00").getDay()]}</span>
+                    ) : null}
                   </div>
                   <div className="ps-logi-day__fuels">
-                    {FUELS.filter((f) => info.byFuel.has(f)).map((f) => (
-                      <span key={f} className="ps-fuel-pill">{f} · {fmtInt(info.byFuel.get(f))} л</span>
+                    {FUELS.filter((f) => byFuelDay.get(f) > 0).map((f) => (
+                      <span key={f} className="ps-fuel-pill">{f} · {fmtInt(byFuelDay.get(f))} л</span>
                     ))}
                   </div>
                   <div className="ps-logi-day__total">
                     <span>{fmtInt(dayTotal)} л</span>
-                    <span className="ps-logi-day__total-sum">{fmtInt(info.sum)} ₽</span>
+                    <span className="ps-logi-day__total-sum">{fmtInt(daySum)} ₽</span>
                   </div>
                 </div>
                 <div className="ps-logi-day__clients">
-                  {info.groups.map((g) => {
-                    const client = clientById.get(g.clientId);
+                  {bucket.rows.map((r) => {
+                    const client = clientById.get(r.group.clientId);
                     return (
-                      <button key={g.id} type="button" className="ps-logi-client-row" onClick={() => onOpenSell && onOpenSell(g.clientId, g)}>
+                      <button key={r.group.id} type="button" className="ps-logi-client-row" onClick={() => onOpenSell && onOpenSell(r.group.clientId, r.group)}>
                         <span className="ps-logi-client-row__name">{client?.company || "Клиент удалён"}</span>
-                        <span className="ps-history__fuel">
-                          {(g.items || []).map((i) => `${i.fuel} ${fmtInt(toNum(i.volume))} л`).join(", ")}
-                        </span>
-                        <span className="ps-logi-client-row__sum">{fmtInt(toNum(g.sum))} ₽</span>
-                        {g.shipped
-                          ? <span className="ps-ship-badge ps-ship-badge--done">Отгружено</span>
-                          : <span className="ps-ship-badge ps-ship-badge--pending">Не отгружено</span>}
-                        <span className="ps-journal__manager">{g.createdBy ? <span style={{ color: colorForName(g.createdBy) }}>{g.createdBy}</span> : "—"}</span>
+                        <span className="ps-history__fuel">{fuelText(r.remaining)}</span>
+                        <span className="ps-logi-client-row__sum">{fmtInt(remainingSum(r))} ₽</span>
+                        <span>{client?.phone || "—"}</span>
+                        <span className="ps-journal__manager">{r.group.createdBy ? <span style={{ color: colorForName(r.group.createdBy) }}>{r.group.createdBy}</span> : "—"}</span>
                       </button>
                     );
                   })}
