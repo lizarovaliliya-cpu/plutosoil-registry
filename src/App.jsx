@@ -917,6 +917,26 @@ function GlobalStyle() {
       .ps-limits__client-row--on { border-color: var(--petrol-2); background:#EAF3F8; }
       .ps-limits__client-meta { font-size:11px; color:#8A94A0; }
       .ps-limits__gauges { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:12px; }
+      .ps-logi-header { padding:18px 22px 4px; display:flex; flex-direction:column; gap:3px; }
+      .ps-logi-header__title { display:flex; align-items:center; gap:9px; font-family: var(--font-display); font-weight:700; font-size:19px; color: var(--petrol); }
+      .ps-logi-header__sub { font-size:12.5px; color:#8A94A0; margin-left:26px; }
+      .ps-logi-days { display:flex; flex-direction:column; gap:12px; padding:0 22px; margin-bottom:22px; }
+      .ps-logi-day { gap:10px; }
+      .ps-logi-day__head { display:flex; align-items:center; gap:18px; flex-wrap:wrap; padding-bottom:10px; border-bottom:1px solid var(--line); }
+      .ps-logi-day__date { display:flex; flex-direction:column; min-width:110px; }
+      .ps-logi-day__date-main { font-family: var(--font-display); font-weight:700; font-size:15px; color: var(--petrol); }
+      .ps-logi-day__date-week { font-size:11px; color:#8A94A0; text-transform:capitalize; }
+      .ps-logi-day__fuels { display:flex; gap:6px; flex-wrap:wrap; flex:1; }
+      .ps-fuel-pill { background:#EAF3F8; color: var(--petrol-2); border-radius:20px; padding:4px 11px; font-size:12px; font-weight:600; white-space:nowrap; }
+      .ps-logi-day__total { display:flex; flex-direction:column; align-items:flex-end; font-family: var(--font-mono); }
+      .ps-logi-day__total span:first-child { font-weight:700; font-size:14px; color: var(--ink); }
+      .ps-logi-day__total-sum { font-size:11.5px; color: var(--amber); font-weight:600; }
+      .ps-logi-day__clients { display:flex; flex-direction:column; gap:6px; }
+      .ps-logi-client-row { display:grid; grid-template-columns:1.6fr 2fr 1fr auto auto 1fr; gap:12px; align-items:center; background: var(--paper); border:1px solid var(--line); border-radius:9px; padding:9px 12px; font-size:12.5px; text-align:left; cursor:pointer; font-family: var(--font-body); color: var(--ink); width:100%; }
+      .ps-logi-client-row:hover { border-color: var(--petrol-2); background:#EAF3F8; }
+      .ps-logi-client-row__name { font-weight:600; }
+      .ps-logi-client-row__sum { font-family: var(--font-mono); font-weight:600; text-align:right; }
+      @media (max-width:820px) { .ps-logi-client-row { grid-template-columns:1fr; text-align:left; } }
       .ps-limits__vehicle-limits { display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; background:#EEF1F4; border-radius:10px; padding:10px 12px; margin-top:4px; }
       @media (max-width:520px) { .ps-limits__vehicle-limits { grid-template-columns:1fr; } }
       .ps-cal-title { font-family: var(--font-display); font-weight:600; font-size:13.5px; }

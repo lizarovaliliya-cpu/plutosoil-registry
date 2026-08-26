@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from "react";
-import { Download, FileSpreadsheet, CalendarRange, CalendarClock, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Download, FileSpreadsheet, CalendarRange, CalendarClock, AlertTriangle, ChevronLeft, ChevronRight, Fuel as FuelIcon, Truck } from "lucide-react";
 import * as XLSX from "xlsx";
 import { fmtInt, toNum, colorForName } from "./utils.js";
 import { FUELS, DENSITY, CONTAINER_LABELS } from "./shared.jsx";
 
 const MONTH_NAMES = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 const WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+const WEEKDAY_FULL = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
 
 const isoOf = (d) => {
   const p = (n) => String(n).padStart(2, "0");
@@ -175,25 +176,6 @@ export default function ShipmentsView({ sales, clients, locations, prices, shipm
 
   const visibleBuckets = !selectedDay ? calendarBuckets : calendarBuckets.filter((b) => b.key === selectedDay);
 
-  const exportCalendarExcel = () => {
-    const headers = ["Дата отгрузки", "Клиент", "Остаток к отгрузке", "Телефон", "Комментарий", "Менеджер"];
-    const body = [];
-    calendarBuckets.forEach((bucket) => {
-      bucket.rows.forEach((r) => {
-        const client = clientById.get(r.group.clientId);
-        body.push([
-          bucket.tone === "overdue" ? `Просрочено (${shortDate(r.group.plannedShipDate)})` : bucket.tone === "nodate" ? "Без даты" : bucket.label,
-          client?.company || "Клиент удалён", fuelText(r.remaining), client?.phone || "", r.group.comment || "", r.group.createdBy || "",
-        ]);
-      });
-    });
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...body]);
-    ws["!cols"] = headers.map(() => ({ wch: 22 }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Календарь отгрузок");
-    XLSX.writeFile(wb, `PlutosOil_календарь_отгрузок_${todayIso()}.xlsx`);
-  };
-
   const periodGroups = useMemo(() => {
     let out = sales;
     if (period === "today") out = out.filter((s) => s.saleDate === todayIso());
@@ -225,19 +207,20 @@ export default function ShipmentsView({ sales, clients, locations, prices, shipm
   const totalSum = periodItems.reduce((a, it) => a + toNum(it.sum), 0);
   const shippedCount = periodGroups.filter((g) => g.shipped).length;
 
-  /* ---- та же потребность, но разбитая по дням — для Excel-выгрузки ---- */
-  const byDay = useMemo(() => {
+  /* ---- та же потребность, но разбитая по дням и клиентам — единый ---- */
+  /* ---- источник и для отображения на экране, и для Excel-выгрузки ---- */
+  const dayGroups = useMemo(() => {
     const map = new Map();
-    periodItems.forEach((it) => {
-      const d = it.group.saleDate || "";
-      if (!map.has(d)) map.set(d, { byFuel: new Map(), sum: 0, count: new Set() });
+    periodGroups.forEach((g) => {
+      const d = g.saleDate || "";
+      if (!map.has(d)) map.set(d, { groups: [], byFuel: new Map(), sum: 0 });
       const cur = map.get(d);
-      cur.byFuel.set(it.fuel, (cur.byFuel.get(it.fuel) || 0) + toNum(it.volume));
-      cur.sum += toNum(it.sum);
-      cur.count.add(it.group.id);
+      cur.groups.push(g);
+      (g.items || []).forEach((it) => cur.byFuel.set(it.fuel, (cur.byFuel.get(it.fuel) || 0) + toNum(it.volume)));
+      cur.sum += toNum(g.sum);
     });
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [periodItems]);
+  }, [periodGroups]);
 
   const periodLabel = period === "today" ? "сегодня"
     : period === "yesterday" ? "вчера"
@@ -273,9 +256,9 @@ export default function ShipmentsView({ sales, clients, locations, prices, shipm
     ws2["!cols"] = detailHeaders.map(() => ({ wch: 18 }));
 
     const dayHeaders = ["Дата", ...FUELS.map((f) => `${f}, л`), "Итого, л", "Сделок", "Сумма, ₽"];
-    const dayBody = byDay.map(([d, info]) => {
+    const dayBody = dayGroups.map(([d, info]) => {
       const dayTotal = FUELS.reduce((a, f) => a + (info.byFuel.get(f) || 0), 0);
-      return [shortDate(d), ...FUELS.map((f) => info.byFuel.get(f) || 0), dayTotal, info.count.size, info.sum];
+      return [shortDate(d), ...FUELS.map((f) => info.byFuel.get(f) || 0), dayTotal, info.groups.length, info.sum];
     });
     dayBody.push(["ИТОГО", ...FUELS.map((f) => byFuel.get(f).volume), totalVolume, periodGroups.length, totalSum]);
     const ws3 = XLSX.utils.aoa_to_sheet([dayHeaders, ...dayBody]);
@@ -290,15 +273,127 @@ export default function ShipmentsView({ sales, clients, locations, prices, shipm
 
   return (
     <>
+      <div className="ps-logi-header">
+        <span className="ps-logi-header__title"><Truck size={17} /> Отчёт для логистики</span>
+        <span className="ps-logi-header__sub">Потребность по дням, видам топлива и клиентам</span>
+      </div>
+
       <div className="ps-toolbar">
+        <div className="ps-chips">
+          <button className={`ps-chip ${period === "today" ? "ps-chip--on" : ""}`} onClick={() => setPeriod("today")}>Сегодня</button>
+          <button className={`ps-chip ${period === "yesterday" ? "ps-chip--on" : ""}`} onClick={() => setPeriod("yesterday")}>Вчера</button>
+          <button className={`ps-chip ${period === "custom" && customFrom === daysAgoIso(6) ? "ps-chip--on" : ""}`}
+            onClick={() => { setPeriod("custom"); setCustomFrom(daysAgoIso(6)); setCustomTo(todayIso()); }}>7 дней</button>
+          <button className={`ps-chip ${period === "custom" && customFrom === daysAgoIso(29) ? "ps-chip--on" : ""}`}
+            onClick={() => { setPeriod("custom"); setCustomFrom(daysAgoIso(29)); setCustomTo(todayIso()); }}>30 дней</button>
+          <button className={`ps-chip ${period === "custom" ? "ps-chip--on" : ""}`} onClick={openCustomPeriod}><CalendarRange size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Период</button>
+        </div>
+        <button className={`ps-chip ${onlyUnshipped ? "ps-chip--on" : ""}`} onClick={() => setOnlyUnshipped((v) => !v)}>Не отгружено</button>
+        <div className="ps-toolbar__spacer" />
+        <button className="ps-btn ps-btn--primary" style={{ width: "auto" }} disabled={periodGroups.length === 0} onClick={exportExcel}>
+          <Download size={15} /> Скачать Excel для логистики
+        </button>
+      </div>
+
+      {period === "custom" && (
+        <div className="ps-toolbar ps-toolbar--period">
+          <div className="ps-period-range">
+            <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+            <span>—</span>
+            <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+            {customFrom && customTo && customFrom > customTo && (
+              <span style={{ color: "#C13B3B", fontSize: 12 }}>Дата «с» позже даты «по» — период пуст</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="ps-period-summary">
+        <span className="ps-period-summary__label">Итого за {periodLabel}</span>
+        <span className="ps-period-summary__stat"><b>{periodGroups.length}</b> сделок</span>
+        <span className="ps-period-summary__divider" />
+        <span className="ps-period-summary__stat ps-period-summary__stat--sum"><b>{fmtInt(totalVolume)}</b> л заказано</span>
+        <span className="ps-period-summary__divider" />
+        <span className="ps-period-summary__stat"><b>{fmtInt(totalSum)}</b> ₽ выручка</span>
+        {periodGroups.length > 0 && (
+          <>
+            <span className="ps-period-summary__divider" />
+            <span className="ps-period-summary__stat">отгружено <b>{shippedCount}</b> из {periodGroups.length}</span>
+          </>
+        )}
+      </div>
+
+      <div className="ps-kpi-grid" style={{ gridTemplateColumns: `repeat(${FUELS.length}, 1fr)` }}>
+        {FUELS.map((f) => {
+          const m = byFuel.get(f);
+          const d = densityFor(f);
+          return (
+            <div key={f} className="ps-kpi-card">
+              <div className="ps-kpi-card__label">Потребность {f}</div>
+              <div className="ps-kpi-card__value">{fmtInt(m.volume)} л</div>
+              {d > 0 && <div className="ps-price-row__meta">≈ {((m.volume * d) / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 3 })} т</div>}
+            </div>
+          );
+        })}
+      </div>
+
+      {dayGroups.length === 0 ? (
+        <div className="ps-empty" style={{ margin: "0 22px 22px" }}>
+          <FileSpreadsheet size={16} style={{ verticalAlign: -3, marginRight: 6 }} />
+          За этот период сделок нет.
+        </div>
+      ) : (
+        <div className="ps-logi-days">
+          {dayGroups.map(([d, info]) => {
+            const dayTotal = FUELS.reduce((a, f) => a + (info.byFuel.get(f) || 0), 0);
+            const date = new Date(d + "T00:00:00");
+            return (
+              <div key={d} className="ps-sell-section ps-logi-day">
+                <div className="ps-logi-day__head">
+                  <div className="ps-logi-day__date">
+                    <span className="ps-logi-day__date-main">{shortDate(d)}</span>
+                    {!isNaN(date) && <span className="ps-logi-day__date-week">{WEEKDAY_FULL[date.getDay()]}</span>}
+                  </div>
+                  <div className="ps-logi-day__fuels">
+                    {FUELS.filter((f) => info.byFuel.has(f)).map((f) => (
+                      <span key={f} className="ps-fuel-pill">{f} · {fmtInt(info.byFuel.get(f))} л</span>
+                    ))}
+                  </div>
+                  <div className="ps-logi-day__total">
+                    <span>{fmtInt(dayTotal)} л</span>
+                    <span className="ps-logi-day__total-sum">{fmtInt(info.sum)} ₽</span>
+                  </div>
+                </div>
+                <div className="ps-logi-day__clients">
+                  {info.groups.map((g) => {
+                    const client = clientById.get(g.clientId);
+                    return (
+                      <button key={g.id} type="button" className="ps-logi-client-row" onClick={() => onOpenSell && onOpenSell(g.clientId, g)}>
+                        <span className="ps-logi-client-row__name">{client?.company || "Клиент удалён"}</span>
+                        <span className="ps-history__fuel">
+                          {(g.items || []).map((i) => `${i.fuel} ${fmtInt(toNum(i.volume))} л`).join(", ")}
+                        </span>
+                        <span className="ps-logi-client-row__sum">{fmtInt(toNum(g.sum))} ₽</span>
+                        {g.shipped
+                          ? <span className="ps-ship-badge ps-ship-badge--done">Отгружено</span>
+                          : <span className="ps-ship-badge ps-ship-badge--pending">Не отгружено</span>}
+                        <span className="ps-journal__manager">{g.createdBy ? <span style={{ color: colorForName(g.createdBy) }}>{g.createdBy}</span> : "—"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="ps-toolbar" style={{ marginTop: 8 }}>
         <div className="ps-field-head" style={{ flex: 1 }}>
           <span style={{ fontWeight: 600, color: "var(--petrol)", fontFamily: "var(--font-display)", fontSize: 15 }}>
             <CalendarClock size={16} style={{ verticalAlign: -3, marginRight: 6 }} />Календарь отгрузок
           </span>
         </div>
-        <button className="ps-btn" disabled={calendarBuckets.length === 0} onClick={exportCalendarExcel}>
-          <Download size={15} /> Excel
-        </button>
       </div>
 
       <div className="ps-cal-widget">
@@ -391,96 +486,6 @@ export default function ShipmentsView({ sales, clients, locations, prices, shipm
           ))}
         </div>
       )}
-
-      <div className="ps-toolbar">
-        <div className="ps-chips">
-          <button className={`ps-chip ${period === "today" ? "ps-chip--on" : ""}`} onClick={() => setPeriod("today")}>Сегодня</button>
-          <button className={`ps-chip ${period === "yesterday" ? "ps-chip--on" : ""}`} onClick={() => setPeriod("yesterday")}>Вчера</button>
-          <button className={`ps-chip ${period === "custom" && customFrom === daysAgoIso(6) ? "ps-chip--on" : ""}`}
-            onClick={() => { setPeriod("custom"); setCustomFrom(daysAgoIso(6)); setCustomTo(todayIso()); }}>7 дней</button>
-          <button className={`ps-chip ${period === "custom" && customFrom === daysAgoIso(29) ? "ps-chip--on" : ""}`}
-            onClick={() => { setPeriod("custom"); setCustomFrom(daysAgoIso(29)); setCustomTo(todayIso()); }}>30 дней</button>
-          <button className={`ps-chip ${period === "custom" ? "ps-chip--on" : ""}`} onClick={openCustomPeriod}><CalendarRange size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Период</button>
-        </div>
-        <button className={`ps-chip ${onlyUnshipped ? "ps-chip--on" : ""}`} onClick={() => setOnlyUnshipped((v) => !v)}>Не отгружено</button>
-        <div className="ps-toolbar__spacer" />
-        <button className="ps-btn ps-btn--primary" style={{ width: "auto" }} disabled={periodGroups.length === 0} onClick={exportExcel}>
-          <Download size={15} /> Скачать Excel для логистики
-        </button>
-      </div>
-
-      {period === "custom" && (
-        <div className="ps-toolbar ps-toolbar--period">
-          <div className="ps-period-range">
-            <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-            <span>—</span>
-            <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
-            {customFrom && customTo && customFrom > customTo && (
-              <span style={{ color: "#C13B3B", fontSize: 12 }}>Дата «с» позже даты «по» — период пуст</span>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="ps-period-summary">
-        <span className="ps-period-summary__label">Отчёт за {periodLabel}</span>
-        <span className="ps-period-summary__stat"><b>{periodGroups.length}</b> сделок</span>
-        <span className="ps-period-summary__divider" />
-        <span className="ps-period-summary__stat ps-period-summary__stat--sum"><b>{fmtInt(totalVolume)}</b> л заказано</span>
-        <span className="ps-period-summary__divider" />
-        <span className="ps-period-summary__stat"><b>{fmtInt(totalSum)}</b> ₽ выручка</span>
-        {periodGroups.length > 0 && (
-          <>
-            <span className="ps-period-summary__divider" />
-            <span className="ps-period-summary__stat">отгружено <b>{shippedCount}</b> из {periodGroups.length}</span>
-          </>
-        )}
-      </div>
-
-      <div className="ps-kpi-grid" style={{ gridTemplateColumns: `repeat(${FUELS.length}, 1fr)` }}>
-        {FUELS.map((f) => {
-          const m = byFuel.get(f);
-          const d = densityFor(f);
-          return (
-            <div key={f} className="ps-kpi-card">
-              <div className="ps-kpi-card__label">Потребность {f}</div>
-              <div className="ps-kpi-card__value">{fmtInt(m.volume)} л</div>
-              {d > 0 && <div className="ps-price-row__meta">≈ {((m.volume * d) / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 3 })} т</div>}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="ps-journal">
-        {periodGroups.length === 0 ? (
-          <div className="ps-empty">
-            <FileSpreadsheet size={16} style={{ verticalAlign: -3, marginRight: 6 }} />
-            За этот период сделок нет.
-          </div>
-        ) : (
-          <div className="ps-journal__entries">
-            {periodGroups.map((g) => {
-              const client = clientById.get(g.clientId);
-              return (
-                <button key={g.id} type="button" className="ps-journal__entry" style={{ gridTemplateColumns: "0.9fr 1.4fr 2fr 1fr 1.2fr 1fr" }}>
-                  <span>{shortDate(g.saleDate)}</span>
-                  <span className="ps-journal__client">{client?.company || "Клиент удалён"}</span>
-                  <span className="ps-history__fuel">
-                    {(g.items || []).map((i) => `${i.fuel} ${fmtInt(toNum(i.volume))} л${i.locationId ? ` (${locationLabel(locationById.get(i.locationId))})` : ""}`).join(", ")}
-                  </span>
-                  <span className="ps-journal__sum">{fmtInt(toNum(g.sum))} ₽</span>
-                  <span>
-                    {g.shipped
-                      ? <span className="ps-ship-badge ps-ship-badge--done">Отгружено</span>
-                      : <span className="ps-ship-badge ps-ship-badge--pending">Не отгружено</span>}
-                  </span>
-                  <span className="ps-journal__manager">{g.createdBy ? <span style={{ color: colorForName(g.createdBy) }}>{g.createdBy}</span> : "—"}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
     </>
   );
 }
