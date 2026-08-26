@@ -225,6 +225,20 @@ export default function ShipmentsView({ sales, clients, locations, prices, shipm
   const totalSum = periodItems.reduce((a, it) => a + toNum(it.sum), 0);
   const shippedCount = periodGroups.filter((g) => g.shipped).length;
 
+  /* ---- та же потребность, но разбитая по дням — для Excel-выгрузки ---- */
+  const byDay = useMemo(() => {
+    const map = new Map();
+    periodItems.forEach((it) => {
+      const d = it.group.saleDate || "";
+      if (!map.has(d)) map.set(d, { byFuel: new Map(), sum: 0, count: new Set() });
+      const cur = map.get(d);
+      cur.byFuel.set(it.fuel, (cur.byFuel.get(it.fuel) || 0) + toNum(it.volume));
+      cur.sum += toNum(it.sum);
+      cur.count.add(it.group.id);
+    });
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [periodItems]);
+
   const periodLabel = period === "today" ? "сегодня"
     : period === "yesterday" ? "вчера"
     : `${shortDate(customFrom)} — ${shortDate(customTo)}`;
@@ -258,7 +272,17 @@ export default function ShipmentsView({ sales, clients, locations, prices, shipm
     const ws2 = XLSX.utils.aoa_to_sheet([detailHeaders, ...detailBody]);
     ws2["!cols"] = detailHeaders.map(() => ({ wch: 18 }));
 
+    const dayHeaders = ["Дата", ...FUELS.map((f) => `${f}, л`), "Итого, л", "Сделок", "Сумма, ₽"];
+    const dayBody = byDay.map(([d, info]) => {
+      const dayTotal = FUELS.reduce((a, f) => a + (info.byFuel.get(f) || 0), 0);
+      return [shortDate(d), ...FUELS.map((f) => info.byFuel.get(f) || 0), dayTotal, info.count.size, info.sum];
+    });
+    dayBody.push(["ИТОГО", ...FUELS.map((f) => byFuel.get(f).volume), totalVolume, periodGroups.length, totalSum]);
+    const ws3 = XLSX.utils.aoa_to_sheet([dayHeaders, ...dayBody]);
+    ws3["!cols"] = dayHeaders.map(() => ({ wch: 16 }));
+
     const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws3, "По дням");
     XLSX.utils.book_append_sheet(wb, ws1, "Потребность по топливу");
     XLSX.utils.book_append_sheet(wb, ws2, "Детализация по сделкам");
     XLSX.writeFile(wb, `PlutosOil_отчёт_логистика_${fileTag}.xlsx`);
