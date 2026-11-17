@@ -37,9 +37,9 @@ export const toDbClient = (c) => ({
   assigned_to: c.assignedTo,
 });
 
-/* ---- позиция продажи (один вид топлива в рамках сделки) ---- */
+/* ---- позиция продажи (один вид топлива или товара в рамках сделки) ---- */
 export const fromDbSale = (s) => ({
-  id: s.id, groupId: s.group_id, fuel: s.fuel || "", price: s.price ?? "", volume: s.volume ?? "",
+  id: s.id, groupId: s.group_id, itemType: s.item_type || "fuel", fuel: s.fuel || "", price: s.price ?? "", volume: s.volume ?? "",
   sum: s.sum ?? "", createdAt: s.created_at ? new Date(s.created_at).getTime() : 0,
   containerMode: s.container_mode || "", containerPrice: s.container_price ?? "",
   containerDeposit: s.container_deposit ?? "", containerQty: s.container_qty ?? "",
@@ -47,7 +47,7 @@ export const fromDbSale = (s) => ({
 });
 
 export const toDbSale = (s) => ({
-  group_id: s.groupId, fuel: s.fuel, price: toNum(s.price), volume: toNum(s.volume), sum: toNum(s.sum),
+  group_id: s.groupId, item_type: s.itemType || "fuel", fuel: s.fuel, price: toNum(s.price), volume: toNum(s.volume), sum: toNum(s.sum),
   container_mode: s.containerMode || "",
   container_price: s.containerPrice === "" ? null : toNum(s.containerPrice),
   container_deposit: s.containerDeposit === "" ? null : toNum(s.containerDeposit),
@@ -89,6 +89,12 @@ export const buildSales = (groups, lines) => {
 
 export const fromDbPrice = (p) => ({
   fuel: p.fuel, priceCash: p.price_cash ?? "", priceCashless: p.price_cashless ?? "", density: p.density ?? "",
+  updatedBy: p.updated_by || "", updatedAt: p.updated_at ? new Date(p.updated_at).getTime() : 0,
+});
+
+/* ---- цена на товар (Еврокуб/бочка/канистра) — одна цена за штуку ---- */
+export const fromDbGoodPrice = (p) => ({
+  good: p.good, price: p.price ?? "",
   updatedBy: p.updated_by || "", updatedAt: p.updated_at ? new Date(p.updated_at).getTime() : 0,
 });
 

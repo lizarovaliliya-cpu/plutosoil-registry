@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { X, ShoppingCart, Trash2, Plus, Printer, Users, ClipboardList, Fuel, Truck, Wallet, MessageSquare, Search } from "lucide-react";
+import { X, ShoppingCart, Trash2, Plus, Printer, Users, ClipboardList, Fuel, Truck, Wallet, MessageSquare, Search, Package } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { toNum, fmtInt, toDbSale, toDbSaleGroup, genId } from "./utils.js";
-import { FUELS, DENSITY, SuggestDropdown, SOURCES } from "./shared.jsx";
+import { FUELS, GOODS, DENSITY, SuggestDropdown, SOURCES } from "./shared.jsx";
 import { printInvoice } from "./invoice.js";
 
 const PAYMENT_METHODS = ["Наличные", "Безналичный", "Карта"];
@@ -20,9 +20,15 @@ const isoToday = () => {
 };
 
 const emptyLine = (fuel, locationId) => ({
-  key: genId(), id: null, fuel: fuel || FUELS[0], price: "", volume: "",
+  key: genId(), id: null, itemType: "fuel", fuel: fuel || FUELS[0], price: "", volume: "",
   containerMode: "", containerPrice: "", containerDeposit: "", containerQty: "1",
   locationId: locationId || "",
+});
+
+const emptyGoodLine = (good) => ({
+  key: genId(), id: null, itemType: "good", fuel: good || GOODS[0], price: "", volume: "1",
+  containerMode: "", containerPrice: "", containerDeposit: "", containerQty: "1",
+  locationId: "",
 });
 
 const lineSum = (l) => {
@@ -31,6 +37,54 @@ const lineSum = (l) => {
   const containerSum = l.containerMode === "buy" || l.containerMode === "rent" ? toNum(l.containerPrice) * qty : 0;
   return fuelSum + containerSum;
 };
+
+function GoodLineRow({ line, goodPrices, onChange, onRemove, canRemove }) {
+  const priceTouchedRef = useRef(!!line.id || line.price !== "");
+  useEffect(() => {
+    if (priceTouchedRef.current) return;
+    const p = (goodPrices || []).find((pr) => pr.good === line.fuel);
+    if (!p || p.price === "" || p.price == null) return;
+    onChange({ price: p.price });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [line.fuel, goodPrices]);
+
+  const handlePriceChange = (v) => {
+    priceTouchedRef.current = true;
+    onChange({ price: v });
+  };
+
+  const sum = toNum(line.price) * toNum(line.volume);
+
+  return (
+    <div className="ps-fieldset" style={{ position: "relative" }}>
+      {canRemove && (
+        <button type="button" className="ps-mini" style={{ position: "absolute", top: 12, right: 12 }} onClick={onRemove} title="Убрать позицию">
+          <Trash2 size={13} />
+        </button>
+      )}
+      <label className="ps-field">
+        <span>Товар</span>
+        <select value={line.fuel} onChange={(e) => onChange({ fuel: e.target.value })}>
+          {GOODS.map((g) => <option key={g} value={g}>{g}</option>)}
+        </select>
+      </label>
+      <div className="ps-field-row">
+        <label className="ps-field">
+          <span>Цена за 1 шт, ₽ *</span>
+          <input type="number" min="0" step="1" value={line.price} onChange={(e) => handlePriceChange(e.target.value)} placeholder="0" />
+        </label>
+        <label className="ps-field">
+          <span>Количество, шт *</span>
+          <input type="number" min="1" step="1" value={line.volume} onChange={(e) => onChange({ volume: e.target.value })} placeholder="1" />
+        </label>
+      </div>
+      <div className="ps-field">
+        <span>Сумма позиции</span>
+        <div className="ps-sell-sum" style={{ fontSize: 16, padding: "2px 0" }}>{fmtInt(sum)} ₽</div>
+      </div>
+    </div>
+  );
+}
 
 function FuelLineRow({ line, paymentMethod, prices, locations, onChange, onRemove, canRemove }) {
   // Автоподстановка цены — только для новой, ещё не сохранённой позиции
@@ -153,7 +207,7 @@ function FuelLineRow({ line, paymentMethod, prices, locations, onChange, onRemov
   );
 }
 
-export default function SellModal({ clients, managerName, managers, presetClientId, group, prices, companyProfile, locations, onCreateClient, onClose }) {
+export default function SellModal({ clients, managerName, managers, presetClientId, group, prices, goodPrices, companyProfile, locations, onCreateClient, onClose }) {
   const isEdit = !!group;
   const sortedClients = useMemo(() => [...clients].sort((a, b) => a.company.localeCompare(b.company, "ru")), [clients]);
   const [clientId, setClientId] = useState(group?.clientId || presetClientId || "");
@@ -169,13 +223,21 @@ export default function SellModal({ clients, managerName, managers, presetClient
   const [creatingClient, setCreatingClient] = useState(false);
   const [lines, setLines] = useState(() =>
     group?.items?.length
-      ? group.items.map((it) => ({
-          key: it.id, id: it.id, fuel: it.fuel, price: it.price, volume: it.volume,
+      ? group.items.filter((it) => (it.itemType || "fuel") !== "good").map((it) => ({
+          key: it.id, id: it.id, itemType: "fuel", fuel: it.fuel, price: it.price, volume: it.volume,
           containerMode: it.containerMode, containerPrice: it.containerPrice,
           containerDeposit: it.containerDeposit, containerQty: it.containerQty || "1",
           locationId: it.locationId || "",
         }))
       : [emptyLine(FUELS[0], locations?.[0]?.id)]
+  );
+  const [goodLines, setGoodLines] = useState(() =>
+    group?.items?.length
+      ? group.items.filter((it) => (it.itemType || "fuel") === "good").map((it) => ({
+          key: it.id, id: it.id, itemType: "good", fuel: it.fuel, price: it.price, volume: it.volume,
+          containerMode: "", containerPrice: "", containerDeposit: "", containerQty: "1", locationId: "",
+        }))
+      : []
   );
   const [saleDate, setSaleDate] = useState(group?.saleDate || isoToday());
   const [paymentMethod, setPaymentMethod] = useState(group?.paymentMethod || PAYMENT_METHODS[0]);
@@ -197,16 +259,28 @@ export default function SellModal({ clients, managerName, managers, presetClient
     const lastLocationId = lines[lines.length - 1]?.locationId || locations?.[0]?.id || "";
     setLines((prev) => [...prev, emptyLine(nextFuel, lastLocationId)]);
   };
-  const removeLine = (key) => setLines((prev) => (prev.length > 1 ? prev.filter((l) => l.key !== key) : prev));
+  // Можно убрать позицию, если в сделке останется хотя бы одна строка —
+  // топливо или товар (сделка «в ноль позиций» не имеет смысла).
+  const removeLine = (key) => setLines((prev) => (prev.length + goodLines.length > 1 ? prev.filter((l) => l.key !== key) : prev));
 
-  const totalSum = lines.reduce((a, l) => a + lineSum(l), 0);
+  const updateGoodLine = (key, patch) => setGoodLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  const addGoodLine = () => {
+    const usedGoods = new Set(goodLines.map((l) => l.fuel));
+    const nextGood = GOODS.find((g) => !usedGoods.has(g)) || GOODS[0];
+    setGoodLines((prev) => [...prev, emptyGoodLine(nextGood)]);
+  };
+  const removeGoodLine = (key) => setGoodLines((prev) => (lines.length + prev.length > 1 ? prev.filter((l) => l.key !== key) : prev));
+
+  const totalSum = lines.reduce((a, l) => a + lineSum(l), 0) + goodLines.reduce((a, l) => a + lineSum(l), 0);
   const depositTotal = lines.reduce((a, l) => a + (l.containerMode === "rent" ? toNum(l.containerDeposit) * (toNum(l.containerQty) || 1) : 0), 0);
   // Склад/АЗС обязателен только для новых позиций — у старых сделок
   // (созданных до появления складов) он мог быть не указан, и это не
   // должно блокировать сохранение остальных изменений в такой сделке.
   // Цена может быть 0 — это нужно для безвозмездной передачи товара
   // (клиенту не выставляют счёт, но объём фиксируется и списывается со склада).
-  const linesValid = lines.every((l) => l.price !== "" && toNum(l.price) >= 0 && toNum(l.volume) > 0 && (l.id || l.locationId));
+  const linesValid = lines.every((l) => l.price !== "" && toNum(l.price) >= 0 && toNum(l.volume) > 0 && (l.id || l.locationId))
+    && goodLines.every((l) => l.price !== "" && toNum(l.price) >= 0 && toNum(l.volume) > 0)
+    && lines.length + goodLines.length > 0;
 
   const save = async () => {
     if (!clientId || !linesValid) return;
@@ -228,19 +302,20 @@ export default function SellModal({ clients, managerName, managers, presetClient
       groupId = data.id;
     }
 
+    const allLines = [...lines, ...goodLines];
     const originalIds = new Set((group?.items || []).map((it) => it.id));
-    const currentIds = new Set(lines.filter((l) => l.id).map((l) => l.id));
+    const currentIds = new Set(allLines.filter((l) => l.id).map((l) => l.id));
     const toDelete = [...originalIds].filter((id) => !currentIds.has(id));
 
     if (toDelete.length) {
       const { error: err } = await supabase.from("sales").delete().in("id", toDelete);
       if (err) { setSaving(false); setError(err.message); return; }
     }
-    for (const l of lines.filter((l) => l.id)) {
+    for (const l of allLines.filter((l) => l.id)) {
       const { error: err } = await supabase.from("sales").update(toDbSale({ ...l, groupId, sum: lineSum(l) })).eq("id", l.id);
       if (err) { setSaving(false); setError(err.message); return; }
     }
-    const newLines = lines.filter((l) => !l.id);
+    const newLines = allLines.filter((l) => !l.id);
     if (newLines.length) {
       const { error: err } = await supabase.from("sales").insert(newLines.map((l) => toDbSale({ ...l, groupId, sum: lineSum(l) })));
       if (err) { setSaving(false); setError(err.message); return; }
@@ -310,10 +385,13 @@ export default function SellModal({ clients, managerName, managers, presetClient
     printInvoice(
       {
         id: group?.id, saleDate, paymentMethod, paid, paidDate, location,
-        items: lines.map((l) => ({
-          ...l, sum: lineSum(l),
-          density: toNum((prices || []).find((pr) => pr.fuel === l.fuel)?.density) || DENSITY[l.fuel] || 0,
-        })),
+        items: [
+          ...lines.map((l) => ({
+            ...l, sum: lineSum(l),
+            density: toNum((prices || []).find((pr) => pr.fuel === l.fuel)?.density) || DENSITY[l.fuel] || 0,
+          })),
+          ...goodLines.map((l) => ({ ...l, sum: lineSum(l) })),
+        ],
       },
       client, companyProfile || {}
     );
@@ -431,9 +509,25 @@ export default function SellModal({ clients, managerName, managers, presetClient
                 key={l.key} line={l} paymentMethod={paymentMethod} prices={prices} locations={locations}
                 onChange={(patch) => updateLine(l.key, patch)}
                 onRemove={() => removeLine(l.key)}
-                canRemove={lines.length > 1}
+                canRemove={lines.length + goodLines.length > 1}
               />
             ))}
+          </div>
+
+          <div className="ps-sell-section">
+            <div className="ps-sell-section__title">
+              <span className="ps-sell-section__title-label"><Package size={13} /> Товары</span>
+              <button type="button" className="ps-link-btn" onClick={addGoodLine}><Plus size={12} /> Добавить товар</button>
+            </div>
+            {goodLines.map((l) => (
+              <GoodLineRow
+                key={l.key} line={l} goodPrices={goodPrices}
+                onChange={(patch) => updateGoodLine(l.key, patch)}
+                onRemove={() => removeGoodLine(l.key)}
+                canRemove={lines.length + goodLines.length > 1}
+              />
+            ))}
+            {goodLines.length === 0 && <p style={{ fontSize: 12.5, color: "#8A94A0", margin: 0 }}>Товаров нет — нажмите «Добавить товар», если клиент покупает тару отдельно.</p>}
           </div>
 
           <div className="ps-sell-section ps-sell-section--accent">

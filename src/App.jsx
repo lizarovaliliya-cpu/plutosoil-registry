@@ -5,7 +5,7 @@ import { supabase } from "./supabaseClient.js";
 import { SEED_DATA } from "./seedData.js";
 import {
   genId, todayStr, toNum, fmtInt, timeAgo, colorForName,
-  fromDbClient, toDbClient, fromDbSale, fromDbSaleGroup, buildSales, fromDbPrice, fromDbCompanyProfile, fromDbReceipt,
+  fromDbClient, toDbClient, fromDbSale, fromDbSaleGroup, buildSales, fromDbPrice, fromDbGoodPrice, fromDbCompanyProfile, fromDbReceipt,
   fromDbLocation, toDbLocation, fromDbTransfer, fromDbShipment, fromDbVehicle, fromDbFuelLimit, fromDbVehicleFuelLimit, fromDbFill,
 } from "./utils.js";
 import { FUELS, DENSITY } from "./shared.jsx";
@@ -71,6 +71,7 @@ export default function App() {
   const [saleGroupsRaw, setSaleGroupsRaw] = useState([]);
   const [saleGroupsLoaded, setSaleGroupsLoaded] = useState(false);
   const [prices, setPrices] = useState([]);
+  const [goodPrices, setGoodPrices] = useState([]);
   const [companyProfile, setCompanyProfile] = useState({});
   const [receipts, setReceipts] = useState([]);
   const [receiptsLoaded, setReceiptsLoaded] = useState(false);
@@ -441,6 +442,38 @@ export default function App() {
     await supabase.from("fuel_prices").upsert({ fuel, [dbField]: num, updated_by: updatedBy }, { onConflict: "fuel" });
   };
 
+  /* ---- цены на товары (Еврокуб/бочка/канистра): загрузка + realtime ---- */
+  useEffect(() => {
+    if (!session) { setGoodPrices([]); return; }
+    let channel;
+    (async () => {
+      const { data } = await supabase.from("goods_prices").select("*");
+      setGoodPrices((data || []).map(fromDbGoodPrice));
+      channel = supabase.channel("goods-prices-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "goods_prices" }, (payload) => {
+          setGoodPrices((prev) => {
+            if (payload.eventType === "DELETE") return prev.filter((p) => p.good !== payload.old.good);
+            const incoming = fromDbGoodPrice(payload.new);
+            const exists = prev.some((p) => p.good === incoming.good);
+            return exists ? prev.map((p) => (p.good === incoming.good ? incoming : p)) : [...prev, incoming];
+          });
+        })
+        .subscribe();
+    })();
+    return () => { if (channel) supabase.removeChannel(channel); };
+  }, [session]);
+
+  const updateGoodPrice = async (good, value) => {
+    const num = value === "" ? null : toNum(value);
+    const updatedBy = managerName || "Гость";
+    setGoodPrices((prev) => {
+      const exists = prev.some((p) => p.good === good);
+      const patch = { good, price: value === "" ? "" : num, updatedBy, updatedAt: Date.now() };
+      return exists ? prev.map((p) => (p.good === good ? { ...p, ...patch } : p)) : [...prev, patch];
+    });
+    await supabase.from("goods_prices").upsert({ good, price: num, updated_by: updatedBy }, { onConflict: "good" });
+  };
+
   /* ---- реквизиты компании (для накладной): загрузка + realtime ---- */
   useEffect(() => {
     if (!session) { setCompanyProfile({}); return; }
@@ -705,11 +738,11 @@ export default function App() {
       {sellModal && (
         <SellModal
           clients={clients} managerName={managerName} managers={managers} presetClientId={sellModal.clientId} group={sellModal.group}
-          prices={prices} companyProfile={companyProfile} locations={locations} onCreateClient={createClient} onClose={() => setSellModal(null)}
+          prices={prices} goodPrices={goodPrices} companyProfile={companyProfile} locations={locations} onCreateClient={createClient} onClose={() => setSellModal(null)}
         />
       )}
       {pricesModalOpen && (
-        <PricesModal prices={prices} onUpdate={updatePrice} onClose={() => setPricesModalOpen(false)} />
+        <PricesModal prices={prices} onUpdate={updatePrice} goodPrices={goodPrices} onUpdateGood={updateGoodPrice} onClose={() => setPricesModalOpen(false)} />
       )}
       {companyModalOpen && (
         <CompanyProfileModal companyProfile={companyProfile} onUpdate={updateCompanyProfile} onClose={() => setCompanyModalOpen(false)} />

@@ -4,6 +4,8 @@ import { fmtInt, fmtT } from "./utils.js";
 export const FUELS = ["АИ-92", "АИ-95", "ДТ К5"];
 export const DENSITY = { "АИ-92": 0.72, "АИ-95": 0.72, "ДТ К5": 0.82 }; // кг/л, запасное значение — реальный коэффициент задаётся в блоке "Цены"
 
+export const GOODS = ["Еврокуб", "Бочка", "Канистра"];
+
 export const CONTAINER_LABELS = { own: "своя тара", buy: "+ тара", rent: "аренда тары" };
 
 export const SOURCES = ["Сов Мин", "Рекомендация", "Сайт", "Авито", "Холодный обзвон", "Другое"];

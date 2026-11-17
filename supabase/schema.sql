@@ -663,3 +663,45 @@ begin
     alter publication supabase_realtime add table vehicle_fuel_limits;
   end if;
 end $$;
+
+-- ============================================================
+-- Товары (этап 18): помимо топлива продаём и тару саму по себе —
+-- Еврокуб, бочка, канистра — отдельными позициями в сделке, без
+-- складского учёта остатков (просто продажа + редактируемый
+-- прайс). Переиспользуем таблицу sales: для товарной позиции
+-- item_type = 'good', название товара лежит в fuel, количество —
+-- в volume, цена за штуку — в price (та же формула sum = price*volume,
+-- что и для топлива). Поля тары/объёма/плотности для таких строк не
+-- используются.
+-- ============================================================
+alter table sales add column if not exists item_type text not null default 'fuel';
+
+create table if not exists goods_prices (
+  good text primary key,
+  price numeric,
+  updated_by text default '',
+  updated_at timestamptz default now()
+);
+
+alter table goods_prices enable row level security;
+
+drop policy if exists "authenticated read" on goods_prices;
+create policy "authenticated read" on goods_prices for select to authenticated using (true);
+
+drop policy if exists "authenticated insert" on goods_prices;
+create policy "authenticated insert" on goods_prices for insert to authenticated with check (true);
+
+drop policy if exists "authenticated update" on goods_prices;
+create policy "authenticated update" on goods_prices for update to authenticated using (true);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'goods_prices'
+  ) then
+    alter publication supabase_realtime add table goods_prices;
+  end if;
+end $$;
+
+insert into goods_prices (good) values ('Еврокуб'), ('Бочка'), ('Канистра')
+on conflict (good) do nothing;

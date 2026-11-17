@@ -13,14 +13,15 @@ function invoiceCopy(group, client, company, docNo, dateStr, copyLabel) {
   let depositSum = 0;
 
   items.forEach((it) => {
+    const isGood = it.itemType === "good";
     const fuelSum = toNum(it.price) * toNum(it.volume);
-    const hasContainer = it.containerMode === "buy" || it.containerMode === "rent";
+    const hasContainer = !isGood && (it.containerMode === "buy" || it.containerMode === "rent");
     const containerQty = toNum(it.containerQty) || 1;
     const containerSum = hasContainer ? toNum(it.containerPrice) * containerQty : 0;
     total += fuelSum + containerSum;
-    if (it.containerMode === "rent") depositSum += toNum(it.containerDeposit) * containerQty;
+    if (hasContainer && it.containerMode === "rent") depositSum += toNum(it.containerDeposit) * containerQty;
 
-    const density = toNum(it.density);
+    const density = isGood ? 0 : toNum(it.density);
     const tonnes = density > 0 ? (toNum(it.volume) * density) / 1000 : null;
 
     rowNum += 1;
@@ -28,7 +29,7 @@ function invoiceCopy(group, client, company, docNo, dateStr, copyLabel) {
     <tr>
       <td>${rowNum}</td>
       <td>${esc(it.fuel)}</td>
-      <td>л</td>
+      <td>${isGood ? "шт" : "л"}</td>
       <td>${fmtInt(toNum(it.volume))}${tonnes != null ? `<br><span class="unit-note">≈ ${tonnes.toLocaleString("ru-RU", { maximumFractionDigits: 3 })} т</span>` : ""}</td>
       <td>${fmtInt(toNum(it.price))}</td>
       <td>${fmtInt(fuelSum)}</td>
