@@ -6,6 +6,13 @@ export const DENSITY = { "АИ-92": 0.72, "АИ-95": 0.72, "ДТ К5": 0.82 }; /
 
 export const GOODS = ["Еврокуб", "Бочка", "Канистра"];
 
+export const TALON_VOLUME = 20; // л — номинал одного талона
+export const SALE_MODES = [
+  { value: "", label: "Наливом" },
+  { value: "talon", label: "Талонами" },
+];
+export const saleModeLabel = (m) => (m === "talon" ? "Талонами" : "Наливом");
+
 export const CONTAINER_LABELS = { own: "своя тара", buy: "+ тара", rent: "аренда тары" };
 
 export const SOURCES = ["Сов Мин", "Рекомендация", "Сайт", "Авито", "Холодный обзвон", "Другое"];

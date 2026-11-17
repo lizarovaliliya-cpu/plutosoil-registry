@@ -23,12 +23,13 @@ function invoiceCopy(group, client, company, docNo, dateStr, copyLabel) {
 
     const density = isGood ? 0 : toNum(it.density);
     const tonnes = density > 0 ? (toNum(it.volume) * density) / 1000 : null;
+    const isTalon = !isGood && it.saleMode === "talon";
 
     rowNum += 1;
     rows += `
     <tr>
       <td>${rowNum}</td>
-      <td>${esc(it.fuel)}</td>
+      <td>${esc(it.fuel)}${isTalon ? `<br><span class="unit-note">талонами, ${fmtInt(toNum(it.talonQty))} шт × 20 л</span>` : ""}</td>
       <td>${isGood ? "шт" : "л"}</td>
       <td>${fmtInt(toNum(it.volume))}${tonnes != null ? `<br><span class="unit-note">≈ ${tonnes.toLocaleString("ru-RU", { maximumFractionDigits: 3 })} т</span>` : ""}</td>
       <td>${fmtInt(toNum(it.price))}</td>

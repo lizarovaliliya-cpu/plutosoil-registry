@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { X, ShoppingCart, Trash2, Plus, Printer, Users, ClipboardList, Fuel, Truck, Wallet, MessageSquare, Search, Package } from "lucide-react";
 import { supabase } from "./supabaseClient.js";
 import { toNum, fmtInt, toDbSale, toDbSaleGroup, genId } from "./utils.js";
-import { FUELS, GOODS, DENSITY, SuggestDropdown, SOURCES } from "./shared.jsx";
+import { FUELS, GOODS, DENSITY, SALE_MODES, TALON_VOLUME, SuggestDropdown, SOURCES } from "./shared.jsx";
 import { printInvoice } from "./invoice.js";
 
 const PAYMENT_METHODS = ["Наличные", "Безналичный", "Карта"];
@@ -22,7 +22,7 @@ const isoToday = () => {
 const emptyLine = (fuel, locationId) => ({
   key: genId(), id: null, itemType: "fuel", fuel: fuel || FUELS[0], price: "", volume: "",
   containerMode: "", containerPrice: "", containerDeposit: "", containerQty: "1",
-  locationId: locationId || "",
+  locationId: locationId || "", saleMode: "", talonQty: "",
 });
 
 const emptyGoodLine = (good) => ({
@@ -115,6 +115,19 @@ function FuelLineRow({ line, paymentMethod, prices, locations, onChange, onRemov
     onChange({ volume: +(toNum(v) * 1000 / density).toFixed(2) });
   };
 
+  const isTalon = line.saleMode === "talon";
+  const handleSaleModeChange = (mode) => {
+    if (mode === "talon") {
+      const qty = toNum(line.talonQty) || Math.max(1, Math.round(toNum(line.volume) / TALON_VOLUME) || 1);
+      onChange({ saleMode: mode, talonQty: String(qty), volume: qty * TALON_VOLUME });
+    } else {
+      onChange({ saleMode: mode, talonQty: "" });
+    }
+  };
+  const handleTalonQtyChange = (v) => {
+    onChange({ talonQty: v, volume: v === "" ? "" : toNum(v) * TALON_VOLUME });
+  };
+
   const qty = toNum(line.containerQty) || 1;
   const fuelSum = toNum(line.price) * toNum(line.volume);
   const containerSum = line.containerMode === "buy" || line.containerMode === "rent" ? toNum(line.containerPrice) * qty : 0;
@@ -146,17 +159,31 @@ function FuelLineRow({ line, paymentMethod, prices, locations, onChange, onRemov
         <input type="number" min="0" step="0.01" value={line.price} onChange={(e) => handlePriceChange(e.target.value)} placeholder="0" />
         {pricePerTonne != null && <div className="ps-sell-sum__breakdown">≈ {fmtInt(pricePerTonne)} ₽/т</div>}
       </label>
-      <div className="ps-field-row">
+      <label className="ps-field">
+        <span>Способ продажи</span>
+        <select value={line.saleMode} onChange={(e) => handleSaleModeChange(e.target.value)}>
+          {SALE_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+        </select>
+      </label>
+      {isTalon ? (
         <label className="ps-field">
-          <span>Объём, л *</span>
-          <input type="number" min="0" step="1" value={line.volume} onChange={(e) => onChange({ volume: e.target.value })} placeholder="0" />
+          <span>Количество талонов, шт * (по {TALON_VOLUME} л)</span>
+          <input type="number" min="1" step="1" value={line.talonQty} onChange={(e) => handleTalonQtyChange(e.target.value)} placeholder="1" />
+          <div className="ps-sell-sum__breakdown">= {fmtInt(toNum(line.volume))} л</div>
         </label>
-        <label className="ps-field">
-          <span>≈ Объём, т</span>
-          <input type="number" min="0" step="0.001" value={tonnesValue} onChange={(e) => handleVolumeTonnesChange(e.target.value)}
-            placeholder={density > 0 ? "0" : "коэффициент не задан"} disabled={density <= 0} />
-        </label>
-      </div>
+      ) : (
+        <div className="ps-field-row">
+          <label className="ps-field">
+            <span>Объём, л *</span>
+            <input type="number" min="0" step="1" value={line.volume} onChange={(e) => onChange({ volume: e.target.value })} placeholder="0" />
+          </label>
+          <label className="ps-field">
+            <span>≈ Объём, т</span>
+            <input type="number" min="0" step="0.001" value={tonnesValue} onChange={(e) => handleVolumeTonnesChange(e.target.value)}
+              placeholder={density > 0 ? "0" : "коэффициент не задан"} disabled={density <= 0} />
+          </label>
+        </div>
+      )}
       <label className="ps-field">
         <span>Тара</span>
         <select value={line.containerMode} onChange={(e) => onChange({ containerMode: e.target.value })}>
@@ -228,6 +255,7 @@ export default function SellModal({ clients, managerName, managers, presetClient
           containerMode: it.containerMode, containerPrice: it.containerPrice,
           containerDeposit: it.containerDeposit, containerQty: it.containerQty || "1",
           locationId: it.locationId || "",
+          saleMode: it.saleMode || "", talonQty: it.talonQty ?? "",
         }))
       : [emptyLine(FUELS[0], locations?.[0]?.id)]
   );

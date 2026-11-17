@@ -29,7 +29,11 @@ const shortDate = (iso) => {
 };
 
 const fuelSummary = (items) =>
-  items.map((i) => `${i.fuel || "—"}${i.containerMode ? ` (${CONTAINER_LABELS[i.containerMode]})` : ""}`).join(", ");
+  items.map((i) => {
+    const tags = [i.containerMode ? CONTAINER_LABELS[i.containerMode] : "", i.saleMode === "talon" ? `талонами, ${toNum(i.talonQty)} шт` : ""]
+      .filter(Boolean).join(", ");
+    return `${i.fuel || "—"}${tags ? ` (${tags})` : ""}`;
+  }).join(", ");
 
 const shipStatusFor = (sale, shipmentsByGroup) => {
   const groupShipments = shipmentsByGroup.get(sale.id) || [];
@@ -132,18 +136,19 @@ export default function SalesView({ sales, salesLoaded, clients, managerName, pr
   }, [filtered]);
 
   const exportExcel = () => {
-    const headers = ["Дата", "Клиент", "Топливо", "Цена, ₽/л", "Объём, л", "Тара", "Кол-во тары, шт", "Цена тары, ₽", "Залог, ₽", "Сумма, ₽", "Агентское вознаграждение, ₽", "Отгружено", "Дата отгрузки", "Менеджер", "Комментарий"];
+    const headers = ["Дата", "Клиент", "Топливо", "Способ продажи", "Кол-во талонов, шт", "Цена, ₽/л", "Объём, л", "Тара", "Кол-во тары, шт", "Цена тары, ₽", "Залог, ₽", "Сумма, ₽", "Агентское вознаграждение, ₽", "Отгружено", "Дата отгрузки", "Менеджер", "Комментарий"];
     const body = [];
     filtered.forEach((s) => {
       s.items.forEach((it, idx) => {
         body.push([
-          s.saleDate, s.clientName, it.fuel, toNum(it.price), toNum(it.volume),
+          s.saleDate, s.clientName, it.fuel, it.saleMode === "talon" ? "Талонами" : "Наливом", it.saleMode === "talon" ? toNum(it.talonQty) : "",
+          toNum(it.price), toNum(it.volume),
           it.containerMode ? CONTAINER_LABELS[it.containerMode] : "", toNum(it.containerQty) || "", toNum(it.containerPrice) || "", toNum(it.containerDeposit) || "",
           toNum(it.sum), idx === 0 ? (toNum(s.agentFee) || "") : "", s.shipped ? "Да" : "Нет", s.shippedDate || "", s.createdBy, idx === 0 ? s.comment : "",
         ]);
       });
     });
-    body.push(["", "", "", "", "", "", "", "", "", grandTotal, agentFeeTotal || "", "", "", "", "ИТОГО"]);
+    body.push(["", "", "", "", "", "", "", "", "", "", "", grandTotal, agentFeeTotal || "", "", "", "", "ИТОГО"]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...body]);
     ws["!cols"] = headers.map(() => ({ wch: 18 }));
     const wb = XLSX.utils.book_new();

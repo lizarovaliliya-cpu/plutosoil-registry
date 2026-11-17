@@ -44,6 +44,7 @@ export const fromDbSale = (s) => ({
   containerMode: s.container_mode || "", containerPrice: s.container_price ?? "",
   containerDeposit: s.container_deposit ?? "", containerQty: s.container_qty ?? "",
   locationId: s.location_id || "",
+  saleMode: s.sale_mode || "", talonQty: s.talon_qty ?? "",
 });
 
 export const toDbSale = (s) => ({
@@ -53,6 +54,8 @@ export const toDbSale = (s) => ({
   container_deposit: s.containerDeposit === "" ? null : toNum(s.containerDeposit),
   container_qty: s.containerQty === "" ? null : toNum(s.containerQty),
   location_id: s.locationId || null,
+  sale_mode: s.saleMode || "",
+  talon_qty: s.talonQty === "" ? null : toNum(s.talonQty),
 });
 
 /* ---- шапка сделки (клиент, дата, оплата, менеджер, отгрузка) ---- */

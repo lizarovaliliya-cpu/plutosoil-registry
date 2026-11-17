@@ -52,6 +52,8 @@ function buildColumnGroups(locationById, densityFor) {
       title: "Топливо",
       columns: [
         { key: "fuel", label: "Вид топлива", get: (r) => r.item.fuel },
+        { key: "saleMode", label: "Способ продажи", get: (r) => (r.item.saleMode === "talon" ? "Талонами" : "Наливом") },
+        { key: "talonQty", label: "Кол-во талонов, шт", get: (r) => (r.item.saleMode === "talon" ? toNum(r.item.talonQty) : "") },
         { key: "volume", label: "Объём, л", get: (r) => toNum(r.item.volume) },
         { key: "tonnes", label: "≈ Объём, т", get: (r) => { const d = densityFor(r.item.fuel); return d > 0 ? +((toNum(r.item.volume) * d) / 1000).toFixed(3) : ""; } },
         { key: "price", label: "Цена, ₽/л", get: (r) => toNum(r.item.price) },
@@ -76,7 +78,7 @@ function buildColumnGroups(locationById, densityFor) {
 const PRESETS = {
   full: null, // все колонки — вычисляется отдельно
   finance: ["saleDate", "client", "manager", "payment", "sum", "agentFee", "paid", "paidDate"],
-  logistics: ["saleDate", "client", "fuel", "volume", "location", "shipped", "shippedDate", "plannedShipDate"],
+  logistics: ["saleDate", "client", "fuel", "saleMode", "volume", "location", "shipped", "shippedDate", "plannedShipDate"],
 };
 
 export default function ReportsView({ sales, clients, locations, prices, managers }) {

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
-import { TrendingUp, BarChart3, Fuel, Users, Wallet, ShoppingCart } from "lucide-react";
+import { TrendingUp, BarChart3, Fuel, Users, Wallet, ShoppingCart, Ticket } from "lucide-react";
 import { fmtInt, toNum, colorForName } from "./utils.js";
-import { FUELS, DENSITY, STATUSES } from "./shared.jsx";
+import { FUELS, DENSITY, STATUSES, saleModeLabel } from "./shared.jsx";
 
 const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 const PAYMENT_METHODS = ["Наличные", "Безналичный", "Карта"];
@@ -84,6 +84,16 @@ export default function AnalyticsView({ sales, clients, rows, prices }) {
     const map = new Map(FUELS.map((f) => [f, 0]));
     filteredSales.flatMap((s) => s.items || []).forEach((it) => { if (map.has(it.fuel)) map.set(it.fuel, map.get(it.fuel) + toNum(it.sum)); });
     return FUELS.map((f) => ({ label: f, value: map.get(f) }));
+  }, [filteredSales]);
+
+  const bySaleMode = useMemo(() => {
+    const map = new Map([["", 0], ["talon", 0]]);
+    filteredSales.flatMap((s) => s.items || []).forEach((it) => {
+      if ((it.itemType || "fuel") !== "fuel") return;
+      const mode = it.saleMode === "talon" ? "talon" : "";
+      map.set(mode, map.get(mode) + toNum(it.volume));
+    });
+    return [...map.entries()].map(([mode, value]) => ({ label: saleModeLabel(mode), value, sub: `${fmtInt(value)} л` }));
   }, [filteredSales]);
 
   const byManager = useMemo(() => {
@@ -214,6 +224,10 @@ export default function AnalyticsView({ sales, clients, rows, prices }) {
 
         <Panel title="Выручка по топливу" icon={Fuel}>
           <BarList rows={byFuel} />
+        </Panel>
+
+        <Panel title="Объём: наливом vs талонами" icon={Ticket}>
+          <BarList rows={bySaleMode} />
         </Panel>
 
         <Panel title="Выручка по менеджерам" icon={Users}>
