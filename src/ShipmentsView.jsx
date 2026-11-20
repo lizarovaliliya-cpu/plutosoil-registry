@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { Download, FileSpreadsheet, CalendarRange, CalendarClock, AlertTriangle, ChevronLeft, ChevronRight, Fuel as FuelIcon, Truck } from "lucide-react";
 import ExcelJS from "exceljs";
 import { fmtInt, toNum, colorForName } from "./utils.js";
-import { FUELS, DENSITY } from "./shared.jsx";
+import { FUELS, DENSITY, saleModeLabel } from "./shared.jsx";
 
 /* ---- фирменные цвета документа (в ARGB, как требует exceljs) ---- */
 const BRAND = {
@@ -42,10 +42,31 @@ const shortDate = (iso) => {
 
 const fuelText = (map) => [...map.entries()].map(([fuel, v]) => `${fuel} ${fmtInt(v)} л`).join(", ");
 
+/* ---- тег способа продажи сделки: наливом / талонами / смешанно — ---- */
+/* ---- по тому, какие режимы встречаются среди ещё не отгруженных ---- */
+/* ---- видов топлива этой сделки (журнал фактических отгрузок режим ---- */
+/* ---- не хранит, поэтому смотрим на исходные позиции сделки) ---- */
+const modesOf = (group, remaining) => {
+  const modes = new Set();
+  (group.items || []).forEach((it) => {
+    if ((it.itemType || "fuel") !== "fuel") return;
+    if (!remaining.has(it.fuel)) return;
+    modes.add(it.saleMode === "talon" ? "talon" : "bulk");
+  });
+  return modes;
+};
+
+const modeTag = (modes) => {
+  if (modes.has("talon") && modes.has("bulk")) return "Смешанно";
+  if (modes.has("talon")) return "Талонами";
+  return "Наливом";
+};
+
 const STATUS_COLOR = { overdue: "#C13B3B", planned: "#E8871E", shipped: "#1E8A56" };
 
 export default function ShipmentsView({ sales, clients, prices, shipments, companyProfile, onOpenSell }) {
   const [planWindow, setPlanWindow] = useState("7"); // 'today' | '7' | '30' | 'all' | 'custom' — на сколько вперёд планируем
+  const [modeFilter, setModeFilter] = useState("all"); // 'all' | 'bulk' | 'talon'
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
@@ -79,10 +100,11 @@ export default function ShipmentsView({ sales, clients, prices, shipments, compa
         (g.items || []).forEach((it) => remaining.set(it.fuel, (remaining.get(it.fuel) || 0) + toNum(it.volume)));
         shipped.forEach((s) => remaining.set(s.fuel, (remaining.get(s.fuel) || 0) - toNum(s.volume)));
         [...remaining.keys()].forEach((f) => { if (remaining.get(f) <= 0.001) remaining.delete(f); });
-        return { group: g, remaining };
+        return { group: g, remaining, modes: modesOf(g, remaining) };
       })
-      .filter((r) => r.remaining.size > 0 && !r.group.shipped);
-  }, [sales, shipmentsByGroup]);
+      .filter((r) => r.remaining.size > 0 && !r.group.shipped)
+      .filter((r) => modeFilter === "all" || r.modes.has(modeFilter));
+  }, [sales, shipmentsByGroup, modeFilter]);
 
   const calendarBuckets = useMemo(() => {
     const today = todayIso();
@@ -350,7 +372,8 @@ export default function ShipmentsView({ sales, clients, prices, shipments, compa
     wb.creator = companyName;
     wb.created = new Date();
 
-    const subtitleLines = [`План отгрузок для склада · ${windowLabel}`, `Сформировано ${generatedAt}`];
+    const modeLabel = modeFilter === "bulk" ? " · только наливом" : modeFilter === "talon" ? " · только талонами" : "";
+    const subtitleLines = [`План отгрузок для склада · ${windowLabel}${modeLabel}`, `Сформировано ${generatedAt}`];
 
     // Лист 1 — По дням
     const ws1 = wb.addWorksheet("По дням");
@@ -387,8 +410,8 @@ export default function ShipmentsView({ sales, clients, prices, shipments, compa
 
     // Лист 3 — Детализация по клиентам
     const ws3 = wb.addWorksheet("Детализация по клиентам");
-    const detailHeaders = ["Дата отгрузки", "Клиент", "Телефон", "Топливо и остаток", "Остаток, ₽", "Менеджер", "Комментарий"];
-    ws3.columns = [{ width: 20 }, { width: 26 }, { width: 15 }, { width: 26 }, { width: 13 }, { width: 14 }, { width: 26 }];
+    const detailHeaders = ["Дата отгрузки", "Клиент", "Телефон", "Топливо и остаток", "Способ продажи", "Остаток, ₽", "Менеджер", "Комментарий"];
+    ws3.columns = [{ width: 20 }, { width: 26 }, { width: 15 }, { width: 26 }, { width: 15 }, { width: 13 }, { width: 14 }, { width: 26 }];
     const startRow3 = addBrandHeader(ws3, detailHeaders.length, "Детализация неотгруженного остатка", subtitleLines);
     const detailRows = [];
     reportBuckets.forEach((bucket) => {
@@ -396,7 +419,7 @@ export default function ShipmentsView({ sales, clients, prices, shipments, compa
         const client = clientById.get(r.group.clientId);
         const row = [
           bucket.tone === "overdue" ? `Просрочено (было ${shortDate(r.group.plannedShipDate)})` : bucket.tone === "nodate" ? "Без даты" : bucket.label,
-          client?.company || "Клиент удалён", client?.phone || "", fuelText(r.remaining),
+          client?.company || "Клиент удалён", client?.phone || "", fuelText(r.remaining), modeTag(r.modes),
           Math.round(remainingSum(r)), r.group.createdBy || "", r.group.comment || "",
         ];
         row[100] = bucket.tone;
@@ -423,6 +446,11 @@ export default function ShipmentsView({ sales, clients, prices, shipments, compa
           <button className={`ps-chip ${planWindow === "30" ? "ps-chip--on" : ""}`} onClick={() => setPlanWindow("30")}>30 дней</button>
           <button className={`ps-chip ${planWindow === "all" ? "ps-chip--on" : ""}`} onClick={() => setPlanWindow("all")}>Весь план</button>
           <button className={`ps-chip ${planWindow === "custom" ? "ps-chip--on" : ""}`} onClick={openCustomWindow}><CalendarRange size={12} style={{ verticalAlign: -2, marginRight: 4 }} />Период</button>
+        </div>
+        <div className="ps-chips">
+          <button className={`ps-chip ${modeFilter === "all" ? "ps-chip--on" : ""}`} onClick={() => setModeFilter("all")}>Все способы</button>
+          <button className={`ps-chip ${modeFilter === "bulk" ? "ps-chip--on" : ""}`} onClick={() => setModeFilter(modeFilter === "bulk" ? "all" : "bulk")}>Наливом</button>
+          <button className={`ps-chip ${modeFilter === "talon" ? "ps-chip--on" : ""}`} onClick={() => setModeFilter(modeFilter === "talon" ? "all" : "talon")}>Талонами</button>
         </div>
         <div className="ps-toolbar__spacer" />
         <button className="ps-btn ps-btn--primary" style={{ width: "auto" }} disabled={reportRows.length === 0} onClick={exportExcel}>
@@ -515,7 +543,7 @@ export default function ShipmentsView({ sales, clients, prices, shipments, compa
                     return (
                       <button key={r.group.id} type="button" className="ps-logi-client-row" onClick={() => onOpenSell && onOpenSell(r.group.clientId, r.group)}>
                         <span className="ps-logi-client-row__name">{client?.company || "Клиент удалён"}</span>
-                        <span className="ps-history__fuel">{fuelText(r.remaining)}</span>
+                        <span className="ps-history__fuel">{fuelText(r.remaining)} <span className="ps-tara-badge">· {modeTag(r.modes)}</span></span>
                         <span className="ps-logi-client-row__sum">{fmtInt(remainingSum(r))} ₽</span>
                         <span>{client?.phone || "—"}</span>
                         <span className="ps-journal__manager">{r.group.createdBy ? <span style={{ color: colorForName(r.group.createdBy) }}>{r.group.createdBy}</span> : "—"}</span>
@@ -615,7 +643,7 @@ export default function ShipmentsView({ sales, clients, prices, shipments, compa
                     <button key={r.group.id} type="button" className="ps-journal__entry" style={{ gridTemplateColumns: "1.6fr 1.6fr 1fr 1.4fr 1fr" }}
                       onClick={() => onOpenSell && onOpenSell(r.group.clientId, r.group)}>
                       <span className="ps-journal__client">{client?.company || "Клиент удалён"}</span>
-                      <span className="ps-history__fuel">{fuelText(r.remaining)}</span>
+                      <span className="ps-history__fuel">{fuelText(r.remaining)} <span className="ps-tara-badge">· {modeTag(r.modes)}</span></span>
                       <span>{client?.phone || "—"}</span>
                       <span style={{ color: "#8A94A0", fontSize: 11.5 }}>{r.group.comment || ""}</span>
                       <span className="ps-journal__manager">{r.group.createdBy ? <span style={{ color: colorForName(r.group.createdBy) }}>{r.group.createdBy}</span> : "—"}</span>
