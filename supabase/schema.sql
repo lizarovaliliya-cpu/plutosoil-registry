@@ -717,3 +717,9 @@ on conflict (good) do nothing;
 -- ============================================================
 alter table sales add column if not exists sale_mode text not null default '';
 alter table sales add column if not exists talon_qty numeric;
+
+-- ============================================================
+-- Новый вид топлива (этап 20): АИ-98, наравне с АИ-92/АИ-95/ДТ К5.
+-- ============================================================
+insert into fuel_prices (fuel) values ('АИ-98')
+on conflict (fuel) do nothing;
